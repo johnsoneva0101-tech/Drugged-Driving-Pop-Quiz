@@ -73,6 +73,12 @@ main{max-width:640px;margin:0 auto;padding:16px 16px calc(28px + env(safe-area-i
 .locked{margin-top:14px;text-align:center;font-weight:800;font-size:15.5px;border-radius:12px;padding:10px;background:var(--surface2);border:1.5px solid var(--line)}
 .locked.warn{background:var(--amber-soft);border-color:var(--amber);color:var(--amber)}
 .mine{display:inline-block;margin-top:12px;font-weight:900;font-size:18px;border-radius:12px;padding:8px 16px;background:var(--surface2);border:1.5px solid var(--line)}
+.res-ok{border-color:var(--green);background:var(--green-soft)} .res-ok .h{color:var(--green);font-size:26px}
+.res-ng{border-color:var(--red);background:var(--red-soft)} .res-ng .h{color:var(--red);font-size:26px}
+.res-ans{margin:6px 0 0;font-size:18px;font-weight:800}
+.res-ans b{font-size:22px}
+.res-score{margin:8px 0 6px;font-size:19px;font-weight:800}
+.res-score b{font-size:30px;color:var(--accent)}
 .foot{margin-top:18px;text-align:center;font-size:12.5px;color:var(--muted)}
 .foot button{border:0;background:none;color:var(--muted);text-decoration:underline;font-size:12.5px;padding:4px 6px}
 
@@ -209,7 +215,7 @@ table.sum td.c{text-align:right;font-variant-numeric:tabular-nums;white-space:no
 <!-- 第一次設定時，教官看板會提供「複製 SQL」按鈕，內容就是這一段 -->
 <script type="text/plain" id="sqlText">
 -- =====================================================================
--- 毒駕查處隨堂測驗（第 3 版）：完整安裝 SQL（第一次使用）
+-- 毒駕查處隨堂測驗（第 4 版）：完整安裝 SQL（第一次使用）
 -- 用法：Supabase 專案 → 左側「SQL Editor」→ 整段貼上 → 按「Run」
 -- ⚠ 會清除所有題目、報到與作答紀錄，教官密碼回到預設 8888。已在使用中請改用「更新用 SQL」
 -- =====================================================================
@@ -295,7 +301,7 @@ begin
   update quiz_state set status = 'revealed' where id = 1 and status = 'active' and now() > deadline_at;
   select * into s from quiz_state where id = 1;
   select json_build_object(
-    'v',        3,
+    'v',        4,
     'now',      floor(extract(epoch from clock_timestamp()) * 1000),
     'round',    s.round,
     'status',   s.status,
@@ -312,6 +318,15 @@ begin
     'me_ans',   (select answer from quiz_answers where round = s.round and device_id = p_device and q = s.current_q),
     'answered', (select count(*) from quiz_answers where round = s.round and q = s.current_q),
     'eligible', (select eligible from quiz_qlog where round = s.round and q = s.current_q),
+    -- 揭曉後才提供本題正解，讓學員手機顯示自己答對或答錯
+    'correct',  case when s.status in ('revealed','finished') and s.current_q > 0 then
+                  coalesce((select answer from quiz_qlog where round = s.round and q = s.current_q),
+                           (s.config->'questions'->(s.current_q - 1)->>'answer')::boolean) end,
+    -- 測驗結束時提供這支手機的個人成績
+    'my_right', case when s.status = 'finished' then
+                  (select count(*) from quiz_answers a join quiz_qlog l on l.round = a.round and l.q = a.q
+                    where a.round = s.round and a.device_id = p_device and a.answer = case when l.answer then 'T' else 'F' end) end,
+    'my_total', case when s.status = 'finished' then (select count(*) from quiz_qlog where round = s.round) end,
     'counts',   case when s.status in ('revealed','finished') then
                   (select json_build_object('t', count(*) filter (where answer = 'T'), 'f', count(*) filter (where answer = 'F'))
                      from quiz_answers where round = s.round and q = s.current_q) end,
@@ -457,7 +472,7 @@ grant execute on function public.quiz_host(text, text, int, jsonb) to anon, auth
 <!-- 已在使用中的資料庫，只需執行這段「更新用 SQL」（不會清除資料） -->
 <script type="text/plain" id="sqlUpdate">
 -- =====================================================================
--- 毒駕查處隨堂測驗：更新用 SQL（第 2 版 → 第 3 版）
+-- 毒駕查處隨堂測驗：更新用 SQL（第 4 版；第 2、3 版都可直接執行）
 -- 只新增「開題紀錄」資料表並更新函式；不會清除題目、密碼、報到與作答紀錄，可重複執行
 -- 用法：Supabase 專案 → 左側「SQL Editor」→ 整段貼上 → 按「Run」
 -- =====================================================================
@@ -481,7 +496,7 @@ begin
   update quiz_state set status = 'revealed' where id = 1 and status = 'active' and now() > deadline_at;
   select * into s from quiz_state where id = 1;
   select json_build_object(
-    'v',        3,
+    'v',        4,
     'now',      floor(extract(epoch from clock_timestamp()) * 1000),
     'round',    s.round,
     'status',   s.status,
@@ -498,6 +513,15 @@ begin
     'me_ans',   (select answer from quiz_answers where round = s.round and device_id = p_device and q = s.current_q),
     'answered', (select count(*) from quiz_answers where round = s.round and q = s.current_q),
     'eligible', (select eligible from quiz_qlog where round = s.round and q = s.current_q),
+    -- 揭曉後才提供本題正解，讓學員手機顯示自己答對或答錯
+    'correct',  case when s.status in ('revealed','finished') and s.current_q > 0 then
+                  coalesce((select answer from quiz_qlog where round = s.round and q = s.current_q),
+                           (s.config->'questions'->(s.current_q - 1)->>'answer')::boolean) end,
+    -- 測驗結束時提供這支手機的個人成績
+    'my_right', case when s.status = 'finished' then
+                  (select count(*) from quiz_answers a join quiz_qlog l on l.round = a.round and l.q = a.q
+                    where a.round = s.round and a.device_id = p_device and a.answer = case when l.answer then 'T' else 'F' end) end,
+    'my_total', case when s.status = 'finished' then (select count(*) from quiz_qlog where round = s.round) end,
     'counts',   case when s.status in ('revealed','finished') then
                   (select json_build_object('t', count(*) filter (where answer = 'T'), 'f', count(*) filter (where answer = 'F'))
                      from quiz_answers where round = s.round and q = s.current_q) end,
@@ -773,7 +797,7 @@ function studentInit(){
     if (!S) { app.innerHTML = `<main><div class="card center"><p class="h">連線中<span class="dots"></span></p></div></main>`; return; }
     const joined = !!S.me_unit && !changeUnit;
     pill.innerHTML = joined ? `<span class="unit-pill">【${esc(S.me_unit)}】</span>` : "";
-    const key = [joined, S.status, S.q, S.qtext, S.me_ans, pending[S.q], sendErr[S.q], S.total, JSON.stringify(unitList()), joined ? "" : (pick + "|" + other), remain(S) > 0].join("~");
+    const key = [joined, S.status, S.q, S.qtext, S.me_ans, pending[S.q], sendErr[S.q], S.total, JSON.stringify(unitList()), joined ? "" : (pick + "|" + other), remain(S) > 0, S.correct, S.my_right, S.my_total].join("~");
     if (!force && key === lastKey) { tick(); return; }
     lastKey = key;
 
@@ -817,12 +841,25 @@ function studentInit(){
         </div>${lock}</div></main>`;
       tick();
     } else if (S.status === "revealed") {
-      app.innerHTML = `<main><div class="card center"><div class="big-ic">🔒</div>
-        <p class="h">第 ${q} 題作答已結束</p><p class="sub">請聽教官簡短提示</p>
-        <span class="mine">你的作答：${sendErr[q] === "closed" ? "未作答（逾時）" : mineTxt}</span></div></main>`;
+      const answered = mine && sendErr[q] !== "closed";
+      if (S.correct === true || S.correct === false) {
+        // 揭曉：顯示自己答對或答錯，以及正解
+        const right = answered && (mine === "T") === S.correct, ansTxt = S.correct ? "⭕ 是" : "❌ 否";
+        const cls = !answered ? "" : right ? " res-ok" : " res-ng";
+        app.innerHTML = `<main><div class="card center${cls}"><div class="big-ic">${!answered ? "⏰" : right ? "🎉" : "😣"}</div>
+          <p class="h">${!answered ? "本題未作答" : right ? "答對了！" : "答錯了"}</p>
+          <p class="res-ans">本題正解：<b>${ansTxt}</b></p>
+          <span class="mine">你的作答：${answered ? mineTxt : "未作答"}</span>
+          <p class="sub" style="margin-top:12px">第 ${q} 題作答已結束，請聽教官說明</p></div></main>`;
+      } else {
+        app.innerHTML = `<main><div class="card center"><div class="big-ic">🔒</div>
+          <p class="h">第 ${q} 題作答已結束</p><p class="sub">請聽教官簡短提示</p>
+          <span class="mine">你的作答：${sendErr[q] === "closed" ? "未作答（逾時）" : mineTxt}</span></div></main>`;
+      }
     } else {
+      const score = S.my_total ? `<p class="res-score">你答對 <b>${S.my_right}</b> ／ ${S.my_total} 題</p>` : "";
       app.innerHTML = `<main><div class="card center"><div class="big-ic">🎓</div>
-        <p class="h">✅ 隨堂測驗結束，正式課程開始！</p><p class="sub">感謝【${esc(S.me_unit)}】的參與。</p></div></main>`;
+        <p class="h">✅ 隨堂測驗結束，正式課程開始！</p>${score}<p class="sub">感謝【${esc(S.me_unit)}】的參與。</p></div></main>`;
     }
   }
   function footHTML(canChange){
@@ -912,6 +949,13 @@ function hostInit(){
   let tab = "ctrl", draft = null, dirty = false, wizStep = hasCfg() ? 4 : 1;
 
   /* ---------- 控場音效與節奏音樂（Web Audio 即時合成，不需音檔、不需網路） ---------- */
+  // 聲音風格（存在這台電腦）：報到待機、作答中（最後 5 秒以前）、最後 5 秒
+  const SOUND_OPTS = {
+    lobby: [["lounge", "輕快等待音樂（預設）"], ["none", "無聲"]],
+    pre:   [["drums", "鼓組節奏音樂（預設）"], ["bright", "輕快旋律"], ["tick", "滴答節拍"], ["none", "無聲"]],
+    last:  [["A", "A. 急促滴答（預設）"], ["B", "B. 倒數嗶聲"], ["C", "C. 心跳＋滴答"], ["D", "D. 音樂不停＋倒數嗶聲"], ["none", "無（只淡出音樂）"]]
+  };
+  const sndGet = k => { const v = LS.get("dq_snd_" + k); return SOUND_OPTS[k].some(o => o[0] === v) ? v : SOUND_OPTS[k][0][0]; };
   const SFX = (() => {
     let ctx = null, master = null, noiseBuf = null;
     let on = LS.get("dq_sfx") !== "0", music = LS.get("dq_music") !== "0", muted = LS.get("dq_mute") === "1";
@@ -928,7 +972,7 @@ function hostInit(){
       master.gain.value = muted ? 0 : (VOLS[vol] || 0.7);
       return ctx;
     }
-    // 單音：dest 未指定時接到總音量
+    // 單音：dest 未指定時接到總音量；absT 為絕對時間
     function tone(freq, at, dur, type, peak, glide, dest, absT){
       const c = ctx; if (!c || c.state !== "running" || muted) return;
       const t = absT != null ? absT : c.currentTime + (at || 0), o = c.createOscillator(), g = c.createGain();
@@ -947,33 +991,30 @@ function hostInit(){
       s.connect(f); f.connect(g); g.connect(dest); s.start(t); s.stop(t + dur + 0.02);
     }
 
-    /* ---- 節奏音樂：lobby＝報到待機；game＝作答中；urgent＝最後 5 秒 ---- */
+    /* ---- 背景音樂：lounge＝報到待機；drums＝鼓組節奏；bright＝輕快旋律 ---- */
     const N = n => 440 * Math.pow(2, (n - 69) / 12);   // MIDI 音高 → 頻率
     const SONGS = {
-      // 報到待機：輕快 lounge（Am–F–C–G），每分鐘 100 拍
-      lobby: { bpm: 100, gain: 0.32, chords: [[57,60,64],[53,57,60],[48,52,55],[55,59,62]], bass: [45,41,36,43] },
-      // 作答中：四拍鼓組＋貝斯（Em–C–G–D），每分鐘 124 拍
-      game: { bpm: 124, gain: 0.42, chords: [[52,55,59],[48,52,55],[55,59,62],[50,54,57]], bass: [40,36,43,38] },
-      // 最後 5 秒：加速、升調、16 分音符銅鈸＋小鼓連擊
-      urgent: { bpm: 152, gain: 0.5, chords: [[54,57,61],[50,54,57],[57,61,64],[52,56,59]], bass: [42,38,45,40] }
+      lounge: { bpm: 100, gain: 0.32, chords: [[57,60,64],[53,57,60],[48,52,55],[55,59,62]], bass: [45,41,36,43] },
+      drums:  { bpm: 124, gain: 0.42, chords: [[52,55,59],[48,52,55],[55,59,62],[50,54,57]], bass: [40,36,43,38] },
+      bright: { bpm: 118, gain: 0.36, chords: [[60,64,67],[57,60,64],[53,57,60],[55,59,62]], bass: [48,45,41,43] }
     };
     let mode = null, bus = null, nextT = 0, step = 0, timer = null;
     function playStep(m, i, t){
       const S = SONGS[m], bar = Math.floor(i / 16) % 4, s = i % 16, ch = S.chords[bar], b = S.bass[bar], len = 60 / S.bpm / 4;
-      if (m === "lobby") {
-        if (s === 0 || s === 8) tone(70, 0, 0.18, "sine", 0.5, 40, bus, t);                    // 輕柔大鼓
-        if (s % 4 === 2) noise(t, 0.04, 0.12, 8000, bus);                                      // 反拍腳踏鈸
-        if (s === 0 || s === 6 || s === 10) tone(N(b), 0, len * 3, "triangle", 0.35, null, bus, t); // 貝斯
-        if (s % 2 === 0) tone(N(ch[(s / 2) % 3] + 12), 0, len * 1.6, "sine", 0.13, null, bus, t);   // 琶音
-        if (s === 0) ch.forEach(n => tone(N(n), 0, len * 14, "triangle", 0.05, null, bus, t));      // 和弦鋪底
+      if (m === "lounge" || m === "bright") {
+        const br = m === "bright";
+        if (s === 0 || s === 8 || (br && (s === 4 || s === 12))) tone(70, 0, 0.18, "sine", br ? 0.6 : 0.5, 40, bus, t);   // 大鼓
+        if (s % 4 === 2 || (br && s % 2 === 1)) noise(t, 0.04, br ? 0.09 : 0.12, 8000, bus);                            // 腳踏鈸
+        if (br && (s === 4 || s === 12)) noise(t, 0.08, 0.18, 2500, bus);                                                 // 拍手
+        if (s === 0 || s === 6 || s === 10) tone(N(b), 0, len * 3, "triangle", 0.35, null, bus, t);                      // 貝斯
+        if (s % 2 === 0) tone(N(ch[(s / 2) % 3] + (br ? 24 : 12)), 0, len * 1.6, br ? "triangle" : "sine", br ? 0.1 : 0.13, null, bus, t); // 琶音
+        if (s === 0) ch.forEach(n => tone(N(n), 0, len * 14, "triangle", 0.05, null, bus, t));                           // 和弦鋪底
       } else {
-        const urgent = m === "urgent";
-        if (s % 4 === 0) tone(urgent ? 75 : 62, 0, 0.22, "sine", 0.85, 38, bus, t);           // 四拍大鼓
-        if (s === 4 || s === 12 || (urgent && s >= 13)) { noise(t, 0.12, 0.45, 1800, bus); tone(190, 0, 0.08, "triangle", 0.25, 120, bus, t); } // 小鼓
-        if (urgent || s % 2 === 0) noise(t, s % 4 === 2 ? 0.09 : 0.035, s % 4 === 2 ? 0.16 : 0.09, 7000, bus); // 銅鈸
-        if (s % 2 === 0) tone(N(b + (s % 8 === 6 ? 12 : 0)), 0, len * 1.7, "sawtooth", 0.17, null, bus, t);   // 貝斯八分音符
-        if (s === 0 || s === 10) ch.forEach(n => tone(N(n + 12), 0, len * 1.4, "square", 0.035, null, bus, t)); // 和弦刺擊
-        if (urgent && s % 4 === 0) tone(N(ch[2] + 24), 0, len, "square", 0.05, null, bus, t);  // 高音警示
+        if (s % 4 === 0) tone(62, 0, 0.22, "sine", 0.85, 38, bus, t);                                                     // 四拍大鼓
+        if (s === 4 || s === 12) { noise(t, 0.12, 0.45, 1800, bus); tone(190, 0, 0.08, "triangle", 0.25, 120, bus, t); } // 小鼓
+        if (s % 2 === 0) noise(t, s % 4 === 2 ? 0.09 : 0.035, s % 4 === 2 ? 0.16 : 0.09, 7000, bus);                    // 銅鈸
+        if (s % 2 === 0) tone(N(b + (s % 8 === 6 ? 12 : 0)), 0, len * 1.7, "sawtooth", 0.17, null, bus, t);              // 貝斯
+        if (s === 0 || s === 10) ch.forEach(n => tone(N(n + 12), 0, len * 1.4, "square", 0.035, null, bus, t));          // 和弦刺擊
       }
     }
     function schedule(){
@@ -984,32 +1025,51 @@ function hostInit(){
     function setMode(m){
       if (m === mode) return;
       const c = ctx;
-      if (bus && c) { const old = bus; old.gain.setTargetAtTime(0, c.currentTime, 0.04); setTimeout(() => old.disconnect(), 400); bus = null; }
+      if (bus && c) { const old = bus; old.gain.cancelScheduledValues(c.currentTime); old.gain.setTargetAtTime(0, c.currentTime, 0.1); setTimeout(() => old.disconnect(), 900); bus = null; }   // 約 0.3 秒淡出
       mode = m;
       if (!m || !c || c.state !== "running") { mode = null; return; }
       bus = c.createGain(); bus.gain.value = SONGS[m].gain; bus.connect(master);
-      if (m !== "urgent") step = 0;                      // 進入最後 5 秒時接續原本拍點
-      nextT = c.currentTime + 0.05;
+      step = 0; nextT = c.currentTime + 0.05;
       if (!timer) timer = setInterval(schedule, 25);
     }
+    function duck(on){ if (bus && ctx) bus.gain.setTargetAtTime(SONGS[mode].gain * (on ? 0.45 : 1), ctx.currentTime, 0.1); }
+
+    /* ---- 最後 5 秒：開題後到第 5 秒時，一次排好整段倒數聲（截止時整段取消） ---- */
+    let cd = null;   // { bus }
+    function countdown(style, secLeft){
+      cancelCountdown();
+      if (!on || style === "none" || !ac() || ctx.state !== "running" || muted) return;
+      const g = ctx.createGain(); g.connect(master); cd = { bus: g };
+      const end = ctx.currentTime + secLeft, T = x => end - x;   // T(x)＝剩 x 秒的時間點
+      const beepSeq = () => [[5,659],[4,740],[3,831],[2,880],[1,1175]].forEach(([x, f]) => { if (x <= secLeft + 0.05) tone(f, 0, x === 1 ? 0.5 : 0.22, "square", 0.16, null, g, T(x)); });
+      if (style === "A") {
+        for (let x = 5; x > 1.01; x -= 0.5) if (x <= secLeft + 0.05) { const k = (5 - x) * 2; tone(x % 1 === 0 ? 1200 + k * 60 : 900 + k * 60, 0, 0.05, "square", 0.12, null, g, T(x)); tone(x % 1 === 0 ? 90 : 70, 0, 0.1, "sine", 0.25, 45, g, T(x)); }
+        for (let x = 1; x > 0.05; x -= 0.125) if (x <= secLeft + 0.05) tone(1760, 0, 0.04, "square", 0.13, null, g, T(x));
+      } else if (style === "B" || style === "D") {
+        beepSeq();
+      } else if (style === "C") {
+        for (let x = 5; x >= 1; x -= 1) if (x <= secLeft + 0.05) { tone(55, 0, 0.16, "sine", 0.6, 40, g, T(x)); tone(48, 0, 0.18, "sine", 0.45, 35, g, T(x) + 0.2); }
+        for (let x = 5; x > 0.2; x -= 0.5) if (x <= secLeft + 0.05) tone(x % 1 === 0 ? 1100 : 820, 0, 0.035, "square", 0.06, null, g, T(x));
+      }
+    }
+    function cancelCountdown(){ if (cd && ctx) { const g = cd.bus; g.gain.cancelScheduledValues(ctx.currentTime); g.gain.setValueAtTime(g.gain.value, ctx.currentTime); g.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.03); setTimeout(() => g.disconnect(), 400); } cd = null; }
 
     const api = {
       unlock(){ ac(); },
       ready(){ return !!ctx && ctx.state === "running"; },
       get on(){ return on; }, get music(){ return music; }, get muted(){ return muted; }, get vol(){ return vol; }, get mode(){ return mode; },
-      toggle(){ on = !on; LS.set("dq_sfx", on ? "1" : "0"); if (on) { ac(); setTimeout(api.join, 60); } return on; },
+      toggle(){ on = !on; LS.set("dq_sfx", on ? "1" : "0"); if (on) { ac(); setTimeout(api.join, 60); } else cancelCountdown(); return on; },
       toggleMusic(){ music = !music; LS.set("dq_music", music ? "1" : "0"); ac(); if (!music) setMode(null); return music; },
-      toggleMute(){ muted = !muted; LS.set("dq_mute", muted ? "1" : "0"); ac(); if (muted) setMode(null); else setTimeout(api.join, 60); return muted; },
+      toggleMute(){ muted = !muted; LS.set("dq_mute", muted ? "1" : "0"); ac(); if (muted) { setMode(null); cancelCountdown(); } else setTimeout(api.join, 60); return muted; },
       cycleVol(){ vol = vol >= 3 ? 1 : vol + 1; LS.set("dq_vol", String(vol)); ac(); if (on) api.join(); return vol; },
-      setMode(m){ setMode(music && !muted && api.ready() ? m : null); },
+      setMode(m){ setMode(music && !muted && api.ready() && m && SONGS[m] ? m : null); },
+      duck, countdown, cancelCountdown,
       // 有人報到：清脆「叮咚」
       join(){ sfx(880, 0, 0.12, "sine", 0.22); sfx(1320, 0.08, 0.18, "sine", 0.2); },
       // 開始作答：上行四音號角
       start(){ [523, 659, 784, 1047].forEach((f, i) => sfx(f, i * 0.1, i === 3 ? 0.5 : 0.22, "triangle", 0.32)); sfx(131, 0, 0.6, "sine", 0.3); },
-      // 倒數節奏（音樂關閉時才用）：每秒「滴答」交替
+      // 「滴答節拍」：每秒一拍
       beat(n){ const hi = n % 2 === 0; sfx(hi ? 1000 : 760, 0, 0.05, "square", 0.07); sfx(hi ? 110 : 82, 0, 0.16, "sine", 0.32, 50); },
-      // 最後 5 秒：急促高音嗶（每半秒一次）
-      hurry(final){ sfx(final ? 1568 : 1319, 0, 0.09, "square", 0.13); sfx(98, 0, 0.12, "sine", 0.3, 55); },
       // 時間到：低沉蜂鳴
       buzzer(){ sfx(196, 0, 0.7, "sawtooth", 0.2, 98); sfx(147, 0, 0.7, "sawtooth", 0.16, 73); },
       // 揭曉：明亮和弦
@@ -1019,7 +1079,7 @@ function hostInit(){
     };
     return api;
   })();
-  let sfxPrev = null, sfxBeat = null, sfxJoinAt = 0;
+  let sfxPrev = null, sfxBeat = null, sfxJoinAt = 0, cdFor = "", previewUntil = 0;
   // 依狀態變化觸發音效（第一次讀到狀態時不發聲）
   function sfxOnState(){
     if (!S) return;
@@ -1027,28 +1087,53 @@ function hostInit(){
     const p = sfxPrev; sfxPrev = cur;
     if (!p) return;
     if (cur.round !== p.round) return;
-    if (cur.status === "active" && (p.status !== "active" || p.q !== cur.q)) { SFX.setMode(null); SFX.start(); sfxBeat = null; }
-    else if (cur.status === "revealed" && p.status === "active") { SFX.setMode(null); SFX.buzzer(); SFX.reveal(0.75); }
+    if (cur.status === "active" && (p.status !== "active" || p.q !== cur.q)) { SFX.setMode(null); SFX.cancelCountdown(); cdFor = ""; SFX.start(); sfxBeat = null; }
+    else if (cur.status === "revealed" && p.status === "active") { SFX.setMode(null); SFX.cancelCountdown(); SFX.buzzer(); SFX.reveal(0.75); }
     else if (cur.status === "finished" && p.status !== "finished") SFX.finish();
     if (cur.total > p.total && cur.status === "waiting" && Date.now() - sfxJoinAt > 180) { sfxJoinAt = Date.now(); SFX.join(); }
   }
-  // 每 0.1 秒：切換背景音樂段落；音樂關閉時改用滴答節拍
+  // 每 0.1 秒：依目前狀態切換背景音樂；進入最後 5 秒時排好倒數聲
   function sfxTick(){
-    const r = S && S.status === "active" ? remain(S) : 0;
+    if (Date.now() < previewUntil) return;            // 設定頁試聽中
+    const r = S && S.status === "active" ? remain(S) : 0, pre = sndGet("pre"), last = sndGet("last");
+    const elapsed = S ? (S.seconds || 20) - r : 0;
     let want = null;
     if (pin && S) {
-      if (S.status === "waiting") want = "lobby";
-      else if (S.status === "active" && r > 0 && (S.seconds || 20) - r > 0.9) want = r > 5 ? "game" : "urgent";   // 開題號角響完才進音樂
+      if (S.status === "waiting" && sndGet("lobby") === "lounge") want = "lounge";
+      else if (S.status === "active" && r > 0 && elapsed > 0.9 && (r > 5 || last === "D")) want = pre === "drums" || pre === "bright" ? pre : null;
     }
     SFX.setMode(want);
-    if (!S || S.status !== "active") { sfxBeat = null; return; }
-    if (r <= 0) return;
-    const key = r > 5 ? "s" + Math.ceil(r) : "h" + Math.ceil(r * 2);
-    if (key === sfxBeat) return;
-    const first = sfxBeat === null; sfxBeat = key;
-    if (first && (S.seconds || 20) - r < 0.6) return;      // 剛開題時讓號角先響完
-    if (SFX.music && SFX.mode) return;                     // 有背景音樂時，由鼓點帶節奏
-    if (r > 5) SFX.beat(Math.ceil(r)); else SFX.hurry(r <= 1);
+    if (!S || S.status !== "active" || r <= 0) { sfxBeat = null; return; }
+    // 最後 5 秒：每題只排一次
+    const tag = S.round + ":" + S.q;
+    if (r <= 5.2 && cdFor !== tag) { cdFor = tag; SFX.countdown(last, r); if (last === "D") SFX.duck(true); }
+    // 「滴答節拍」風格：最後 5 秒以前每秒一拍
+    if (pre === "tick" && r > 5) {
+      const key = "s" + Math.ceil(r);
+      if (key !== sfxBeat) { const first = sfxBeat === null; sfxBeat = key; if (!(first && elapsed < 0.6)) SFX.beat(Math.ceil(r)); }
+    }
+  }
+  // 設定頁試聽
+  function previewSound(kind){
+    SFX.unlock();
+    if (SFX.muted) { toast("目前是全部靜音，請先到控場看板按「全部靜音」恢復聲音"); return; }
+    if (kind !== "last" && !SFX.music) toast("提醒：🎵 音樂目前是關閉的，只會聽到音效");
+    if (kind === "last" && !SFX.on) toast("提醒：🔔 音效目前是關閉的，倒數聲不會出現"); previewUntil = Date.now() + 9000; SFX.cancelCountdown();
+    const say = m => toast("▶ 試聽：" + m);
+    if (kind === "lobby") { const v = sndGet("lobby"); SFX.setMode(null); setTimeout(() => SFX.setMode(v === "lounge" ? "lounge" : null), 50); say(SOUND_OPTS.lobby.find(o => o[0] === v)[1]); setTimeout(() => SFX.setMode(null), 6000); previewUntil = Date.now() + 6200; return; }
+    if (kind === "pre") {
+      const v = sndGet("pre"); SFX.setMode(null); SFX.start(); say(SOUND_OPTS.pre.find(o => o[0] === v)[1]);
+      if (v === "tick") for (let i = 1; i <= 5; i++) setTimeout(() => SFX.beat(i), 900 + i * 1000);
+      else setTimeout(() => SFX.setMode(v === "none" ? null : v), 900);
+      setTimeout(() => SFX.setMode(null), 6500); previewUntil = Date.now() + 6700; return;
+    }
+    // 最後 5 秒：先播 2 秒作答音樂，再接倒數 5 秒、時間到、揭曉
+    const v = sndGet("last"), pre = sndGet("pre"), m = pre === "drums" || pre === "bright" ? pre : null;
+    say(SOUND_OPTS.last.find(o => o[0] === v)[1]);
+    SFX.setMode(m);
+    setTimeout(() => { if (v !== "D") SFX.setMode(null); else SFX.duck(true); SFX.countdown(v, 5); }, 2000);
+    setTimeout(() => { SFX.setMode(null); SFX.buzzer(); SFX.reveal(0.75); }, 7000);
+    previewUntil = Date.now() + 8800;
   }
   function sfxBtn(){
     if (!SFX.ready()) return `<button type="button" class="cbtn ghost sm" data-a="unlock">🔈 點一下啟用聲音</button>`;
@@ -1165,10 +1250,10 @@ function hostInit(){
     updBanner();
   }
   // 資料庫還是舊版（第 2 版）時提示執行更新用 SQL
-  function needUpdate(){ return !!S && S.v !== 3; }
+  function needUpdate(){ return !!S && (S.v || 0) < 4; }
   function updBanner(){
     const box = document.getElementById("updBox"); if (!box) return;
-    const html = needUpdate() ? `<div class="upd"><div>⚠ 資料庫需要更新一次，才能使用「每題秒數」「歷次梯次成績」與更準確的答對率。請按「📋 複製更新用 SQL」，到 Supabase 的 SQL Editor 貼上按 Run（不會清除任何資料）。<button type="button" class="mini" data-a="copyupd">📋 複製更新用 SQL</button></div></div>` : "";
+    const html = needUpdate() ? `<div class="upd"><div>⚠ 資料庫需要更新一次，才能使用「每題秒數」「歷次梯次成績」「學員手機顯示答對／答錯」與更準確的答對率。請按「📋 複製更新用 SQL」，到 Supabase 的 SQL Editor 貼上按 Run（不會清除任何資料）。<button type="button" class="mini" data-a="copyupd">📋 複製更新用 SQL</button></div></div>` : "";
     if (box.innerHTML !== html) box.innerHTML = html;
   }
   function qSec(i){ const q = CFG && CFG.questions && CFG.questions[i - 1]; return q && q.seconds ? q.seconds : ((CFG && CFG.seconds) || 20); }
@@ -1320,6 +1405,11 @@ function hostInit(){
     const c = cfg();
     document.getElementById("hBody").innerHTML = `<div class="hwrap one"><div class="stage">
       <div class="panel hist"><h3>📈 歷次梯次成績</h3><div id="histBox">${needUpdate() ? `<p class="empty">資料庫更新後才能查看歷次梯次成績。</p>` : `<p class="empty">讀取中…</p>`}</div></div>
+      <div class="panel"><h3>🔊 聲音設定（只存在這台電腦，請在上課用的電腦設定）</h3>
+        ${[["lobby", "報到待機中"], ["pre", "作答中（最後 5 秒以前）"], ["last", "最後 5 秒倒數"]].map(([k, name]) => `<label class="fld"><span>${name}</span>
+          <span class="row" style="margin:0"><select class="sndsel" data-snd="${k}" style="border:1.5px solid #34507E;background:#0D1626;color:#fff;border-radius:10px;padding:8px 10px;font-size:16px">${SOUND_OPTS[k].map(([v, t]) => `<option value="${v}"${sndGet(k) === v ? " selected" : ""}>${t}</option>`).join("")}</select>
+          <button type="button" class="mini" data-a="prev" data-k="${k}">▶ 試聽</button></span></label>`).join("")}
+        <small style="display:block;color:#7F90AD;margin-top:10px">選了就會立即生效。控場看板下方的「全部靜音／音效／音樂／音量」按鈕仍可隨時切換。</small></div>
       <div class="panel"><h3>報到與作答設定</h3>
         <label class="fld"><span>報到快捷單位（一行一個）</span><textarea id="sUnits" rows="5">${esc((CFG.units || []).join("\n"))}</textarea><small>清單以外的單位，學員可以點「其他單位」自己輸入。</small></label>
         <label class="fld"><span>預設每題作答秒數（題目沒有單獨設定秒數時使用）</span><input id="sSec" type="number" min="5" max="180" value="${CFG.seconds || 20}" style="max-width:160px"></label>
@@ -1355,7 +1445,10 @@ function hostInit(){
         <p style="margin-top:12px">參加人數：<b>${D.total}</b> 人</p>${units}<div style="margin-top:12px">${summaryHTML(D, true)}</div>`;
     } catch(e) { if (e.message !== "bad_pin") box.innerHTML = `<p class="msg err">❌ ${esc(connErr(e))}</p>`; }
   }
-  app.addEventListener("change", e => { if (e.target.id === "histSel") loadHist(Number(e.target.value)); });
+  app.addEventListener("change", e => {
+    if (e.target.id === "histSel") loadHist(Number(e.target.value));
+    if (e.target.dataset && e.target.dataset.snd) { LS.set("dq_snd_" + e.target.dataset.snd, e.target.value); toast("已設定：" + e.target.selectedOptions[0].textContent); }
+  });
   async function exportCsv(all){
     if (!hist) return;
     const q = s => `"${String(s == null ? "" : s).replace(/"/g, '""')}"`;
@@ -1388,6 +1481,7 @@ function hostInit(){
     if (sa === "vol") { SFX.cycleVol(); rer(); return; }
     if (sa === "fs") { toggleFs(); return; }
     if (sa === "copyupd") { copyText(document.getElementById("sqlUpdate").textContent.trim() + "\n", "已複製更新用 SQL，請到 Supabase 的 SQL Editor 貼上按 Run"); return; }
+    if (sa === "prev") { previewSound(b.dataset.k); return; }
     if (sa === "histcsv") { exportCsv(false); return; }
     if (sa === "histcsvall") { exportCsv(true); return; }
     // 精靈
