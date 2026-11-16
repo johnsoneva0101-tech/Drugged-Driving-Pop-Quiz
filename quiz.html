@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-TW"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B365D">
+<title>毒駕查處隨堂測驗</title>
+<style>
+/* 學員端：手機一題一畫面｜教官端（網址加 ?host）：設定精靈、控場看板、題目編輯、設定 */
+:root{
+  --bg:#EDF0F5; --surface:#FFFFFF; --surface2:#F4F6FA; --line:#D2D9E3;
+  --ink:#14213A; --muted:#5B6678;
+  --navy:#1B365D; --navy-2:#24467A; --gold:#F5B841;
+  --accent:#1B4F9C; --accent-soft:#E2EBF8;
+  --red:#BF2E20; --red-soft:#FBE8E5;
+  --amber:#9A5A00; --amber-soft:#FFF1D8;
+  --green:#16704A; --green-soft:#E0F3E9;
+  --sans:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.55;min-height:100vh}
+button{font:inherit;color:inherit;cursor:pointer}
+input,textarea{font:inherit}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+
+.top{position:sticky;top:0;z-index:5;background:var(--navy);color:#fff;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px}
+.top-in{max-width:640px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.top small{display:block;font-size:11px;color:var(--gold);font-weight:700;letter-spacing:.04em}
+.top h1{margin:0;font-size:17px;font-weight:900;line-height:1.25}
+.unit-pill{flex:none;background:var(--navy-2);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:3px 11px;font-size:13px;font-weight:800;white-space:nowrap;max-width:45vw;overflow:hidden;text-overflow:ellipsis}
+main{max-width:640px;margin:0 auto;padding:16px 16px calc(28px + env(safe-area-inset-bottom,0px))}
+.net{display:none;background:var(--red);color:#fff;text-align:center;font-weight:800;font-size:13.5px;padding:6px 10px}
+.net.on{display:block}
+
+.card{background:var(--surface);border:1.5px solid var(--line);border-radius:16px;padding:18px 16px}
+.center{text-align:center}
+.big-ic{font-size:52px;line-height:1.1;margin:4px 0 6px}
+.h{margin:0 0 6px;font-size:21px;font-weight:900;line-height:1.35}
+.sub{margin:0;color:var(--muted);font-size:15px}
+.count{display:inline-block;margin-top:12px;background:var(--accent-soft);color:var(--accent);font-weight:900;border-radius:999px;padding:4px 14px;font-size:15.5px}
+.dots::after{content:"…";animation:dots 1.4s steps(4,end) infinite;display:inline-block;width:1.2em;text-align:left;overflow:hidden;vertical-align:bottom}
+@keyframes dots{0%{width:0}100%{width:1.2em}}
+
+.lbl{font-weight:900;font-size:17px;margin:0 0 4px}
+.hint{margin:0 0 12px;color:var(--muted);font-size:14px}
+.units{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ubtn{border:2px solid var(--line);background:var(--surface);border-radius:12px;padding:13px 8px;font-weight:800;font-size:16px}
+.ubtn.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.other{margin-top:10px;display:flex;gap:8px;align-items:center}
+.other input{flex:1;min-width:0;border:2px solid var(--accent);border-radius:12px;padding:11px 12px;font-size:16px;background:var(--surface);color:var(--ink)}
+.primary{width:100%;margin-top:16px;border:0;border-radius:14px;background:var(--green);color:#fff;font-weight:900;font-size:18px;padding:15px}
+.primary:disabled{opacity:.38;cursor:not-allowed}
+.note{margin-top:12px;font-size:13px;color:var(--muted);text-align:center}
+
+.qmeta{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:900;color:var(--muted);font-size:14.5px}
+.timer{font-variant-numeric:tabular-nums;font-weight:900;font-size:30px;color:var(--accent);line-height:1}
+.timer.low{color:var(--red)}
+.tbar{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-bottom:14px}
+.tbar i{display:block;height:100%;background:var(--accent);transition:width .2s linear}
+.tbar.low i{background:var(--red)}
+.qtext{font-size:19px;font-weight:800;line-height:1.55;margin:0 0 18px;white-space:pre-wrap}
+.ans{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.abtn{border:3px solid var(--line);background:var(--surface);border-radius:18px;padding:22px 6px;font-size:26px;font-weight:900;line-height:1.2}
+.abtn span{display:block;font-size:44px;margin-bottom:4px}
+.abtn.t{border-color:#2E7D5B;color:var(--green)}
+.abtn.f{border-color:#C0392B;color:var(--red)}
+.abtn:disabled{opacity:.35;cursor:default}
+.abtn.pick{opacity:1;color:#fff}
+.abtn.t.pick{background:var(--green);border-color:var(--green)}
+.abtn.f.pick{background:var(--red);border-color:var(--red)}
+.locked{margin-top:14px;text-align:center;font-weight:800;font-size:15.5px;border-radius:12px;padding:10px;background:var(--surface2);border:1.5px solid var(--line)}
+.locked.warn{background:var(--amber-soft);border-color:var(--amber);color:var(--amber)}
+.mine{display:inline-block;margin-top:12px;font-weight:900;font-size:18px;border-radius:12px;padding:8px 16px;background:var(--surface2);border:1.5px solid var(--line)}
+.foot{margin-top:18px;text-align:center;font-size:12.5px;color:var(--muted)}
+.foot button{border:0;background:none;color:var(--muted);text-decoration:underline;font-size:12.5px;padding:4px 6px}
+
+/* ================= 教官端 ================= */
+body.host{background:#0D1626;color:#E6EBF3;font-size:17px}
+body.host .top{padding:10px 24px}
+body.host .top-in{max-width:none}
+body.host .top h1{font-size:21px}
+.htabs{display:flex;gap:6px;padding:10px 24px 0;max-width:1500px;margin:0 auto;flex-wrap:wrap}
+.htab{border:1.5px solid #2A3A57;background:#162238;color:#9FB3D6;border-radius:12px;padding:9px 18px;font-weight:900;font-size:16px}
+.htab[aria-selected="true"]{background:var(--gold);border-color:var(--gold);color:#1A1306}
+.banner{max-width:1500px;margin:10px auto 0;padding:0 24px}
+.banner div{background:#3B2A08;border:2px solid var(--gold);color:#FFE3A6;border-radius:12px;padding:10px 14px;font-weight:800;font-size:15.5px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hwrap{padding:16px 24px 120px;max-width:1500px;margin:0 auto;display:grid;grid-template-columns:minmax(260px,1fr) 3fr;gap:18px}
+.hwrap.one{grid-template-columns:1fr;max-width:1000px}
+@media (max-width:900px){.hwrap{grid-template-columns:1fr;padding:14px 14px 140px}.htabs,.banner{padding-left:14px;padding-right:14px}}
+.panel{background:#162238;border:1.5px solid #2A3A57;border-radius:18px;padding:18px}
+.panel h3{margin:0 0 10px;font-size:17px;color:#9FB3D6;font-weight:900;letter-spacing:.03em}
+.panel p{margin:6px 0}
+.total{font-size:clamp(48px,6vw,84px);font-weight:900;line-height:1;color:#fff;font-variant-numeric:tabular-nums}
+.total small{font-size:.32em;color:#9FB3D6;font-weight:800;margin-left:6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chip{background:#20314F;border:1px solid #34507E;border-radius:10px;padding:6px 12px;font-weight:800;font-size:17px}
+.chip b{color:var(--gold);margin-left:6px;font-size:19px}
+.empty{color:#7F90AD;font-size:15px}
+.stage{display:flex;flex-direction:column;gap:16px}
+.status{display:inline-block;border-radius:999px;padding:4px 14px;font-weight:900;font-size:15px;background:#2A3A57;color:#fff}
+.status.active{background:var(--accent)} .status.revealed{background:#B26A00} .status.finished{background:var(--green)}
+.hq-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.hq-n{font-size:22px;font-weight:900;color:var(--gold)}
+.hq-text{font-size:clamp(26px,2.6vw,40px);font-weight:900;line-height:1.5;color:#fff;margin:0;white-space:pre-wrap}
+.htimer{font-size:clamp(70px,9vw,140px);font-weight:900;line-height:1;font-variant-numeric:tabular-nums;color:#86ADF0;text-align:center}
+.htimer.low{color:#FF7D6E}
+.hbar{height:16px;background:#2A3A57;border-radius:10px;overflow:hidden}
+.hbar i{display:block;height:100%;background:#86ADF0;transition:width .2s linear}
+.hbar.low i{background:#FF7D6E}
+.answered{font-size:24px;font-weight:900;text-align:center;color:#C9D6EE}
+.answered b{color:#fff;font-size:34px}
+.bars{display:flex;flex-direction:column;gap:14px}
+.brow{display:grid;grid-template-columns:9.6em 1fr 6.6em;gap:.6em;align-items:center;font-size:clamp(19px,1.9vw,28px)}
+.brow .bl{font-weight:900;white-space:nowrap}
+.brow .bt{height:clamp(38px,4.2vw,58px);background:#20314F;border-radius:12px;overflow:hidden}
+.brow .bt i{display:block;height:100%;border-radius:12px;transition:width .5s ease}
+.brow .bv{font-weight:900;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.brow.t i{background:#2FA36B} .brow.f i{background:#D9473A} .brow.x i{background:#6B7A94}
+.brow.right .bl::after{content:"✔正解";font-size:.62em;background:var(--gold);color:#1A1306;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:4px}
+.acc{border-radius:14px;padding:14px 18px;font-size:22px;font-weight:900;border:3px solid #2FA36B;background:rgba(47,163,107,.12)}
+.acc.bad{border-color:#FF5A4A;background:rgba(255,90,74,.14);color:#FFB3AA}
+.comment{border-radius:14px;padding:16px 20px;background:#FFF1D8;color:#3B2600;font-size:clamp(22px,2.2vw,32px);font-weight:900;line-height:1.5;white-space:pre-wrap}
+.qrbox{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+.qrbox img{width:clamp(180px,20vw,280px);height:auto;background:#fff;border-radius:14px;padding:10px}
+.qrbox .url{font-size:18px;word-break:break-all;color:#C9D6EE}
+.qrbox .big{font-size:clamp(28px,3vw,44px);font-weight:900;color:#fff;line-height:1.3;margin:0 0 8px}
+.done-h{font-size:clamp(34px,4vw,56px);font-weight:900;color:#62D39C;text-align:center;margin:10px 0}
+table.sum{width:100%;border-collapse:collapse;font-size:19px}
+table.sum th{color:#9FB3D6;text-align:left;font-weight:800;padding:8px;border-bottom:2px solid #2A3A57}
+table.sum td{padding:10px 8px;border-top:1px solid #2A3A57;vertical-align:top}
+table.sum td.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:800}
+table.sum td.bad{color:#FF7D6E}
+.ctrl{position:fixed;left:0;right:0;bottom:0;background:#0A101A;border-top:1px solid #2A3A57;padding:12px 24px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:12px;align-items:center;flex-wrap:wrap;z-index:6}
+.cbtn{border:0;border-radius:14px;padding:13px 24px;font-weight:900;font-size:19px;color:#fff;background:var(--accent)}
+.cbtn.go{background:#1E8A57} .cbtn.stop{background:#C0392B}
+.cbtn:disabled{opacity:.4;cursor:not-allowed}
+.cbtn.ghost{background:transparent;border:1.5px solid #3D4F70;color:#C9D6EE;font-size:15px;padding:10px 14px}
+.cbtn.ghost.armed,.mini.armed{background:#C0392B!important;border-color:#C0392B!important;color:#fff!important}
+.cbtn.small{font-size:16px;padding:10px 16px}
+.ctrl .sp{flex:1}
+.msg{font-size:15px;color:var(--gold);font-weight:800}
+.msg.ok{color:#62D39C} .msg.err{color:#FF7D6E}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#62D39C;margin-right:6px;vertical-align:1px}
+.dot.off{background:#FF5A4A}
+
+/* 表單（教官端） */
+.fld{display:block;margin:14px 0 0}
+.fld>span{display:block;color:#9FB3D6;font-weight:800;font-size:15px;margin-bottom:5px}
+.fld input,.fld textarea,.qcard textarea{width:100%;border:1.5px solid #34507E;background:#0D1626;color:#fff;border-radius:10px;padding:10px 12px;font-size:16px;line-height:1.55}
+.fld textarea,.qcard textarea{resize:vertical}
+.fld small{display:block;color:#7F90AD;font-size:13.5px;margin-top:4px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.mini{border:1.5px solid #34507E;background:#20314F;color:#fff;border-radius:10px;padding:7px 12px;font-weight:800;font-size:14.5px}
+.mini.del{border-color:#7A2C25;color:#FFB3AA;background:#2B1716}
+.mini:disabled{opacity:.35;cursor:not-allowed}
+
+/* 設定精靈 */
+.wiz{max-width:860px;margin:18px auto 60px;padding:0 16px;display:flex;flex-direction:column;gap:14px}
+.wiz h2{margin:0;font-size:26px;font-weight:900;color:#fff}
+.step{display:grid;grid-template-columns:46px 1fr;gap:14px}
+.step .n{width:46px;height:46px;border-radius:50%;background:#20314F;border:2px solid #34507E;display:grid;place-items:center;font-weight:900;font-size:20px;color:var(--gold)}
+.step.done .n{background:#1E8A57;border-color:#1E8A57;color:#fff}
+.step h3{margin:6px 0 6px;font-size:19px;color:#fff;font-weight:900}
+.step ol{margin:4px 0;padding-left:22px}
+.step li{margin:4px 0}
+.step b.k{color:var(--gold)}
+.warnbox{margin-top:10px;background:#2B1716;border:2px solid #FF5A4A;color:#FFC9C2;border-radius:12px;padding:10px 14px;font-weight:800}
+
+/* 題目編輯 */
+.qcard{background:#162238;border:1.5px solid #2A3A57;border-radius:16px;padding:14px 16px}
+.qcard .qh{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.qcard .qh b{font-size:18px;color:var(--gold)}
+.qcard .lab{display:block;color:#9FB3D6;font-weight:800;font-size:14.5px;margin:10px 0 5px}
+.tf{display:inline-flex;gap:6px}
+.tf button{border:2px solid #34507E;background:#0D1626;color:#C9D6EE;border-radius:10px;padding:7px 16px;font-weight:900;font-size:16px}
+.tf button.on.t{background:#1E8A57;border-color:#1E8A57;color:#fff}
+.tf button.on.f{background:#C0392B;border-color:#C0392B;color:#fff}
+.edbar{position:fixed;left:0;right:0;bottom:0;background:#0A101A;border-top:1px solid #2A3A57;padding:12px 24px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:12px;align-items:center;flex-wrap:wrap;z-index:6}
+.login{max-width:440px;margin:40px auto;padding:0 16px}
+.login .panel input{width:100%;border:2px solid #34507E;background:#0D1626;color:#fff;border-radius:12px;padding:12px;font-size:20px;letter-spacing:.2em;text-align:center;margin:8px 0 12px}
+.login .err{color:#FF7D6E;font-weight:800;min-height:1.5em;font-size:15px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:#F5B841;color:#1A1306;padding:9px 18px;border-radius:999px;font-weight:900;z-index:20;font-size:16px}
+</style>
+</head>
+<body>
+<div class="net" id="net">連線中斷，重新連線中…（請確認網路）</div>
+<header class="top"><div class="top-in">
+  <div><small>花蓮港務警察總隊｜毒駕查處講習</small><h1 id="ttl">隨堂測驗</h1></div>
+  <div id="topRight"></div>
+</div></header>
+<div id="app"></div>
+
+<!-- 第一次設定時，教官看板會提供「複製 SQL」按鈕，內容就是這一段 -->
+<script type="text/plain" id="sqlText">
+-- =====================================================================
+-- 毒駕查處隨堂測驗（第 2 版）：Supabase 資料表與函式
+-- 用法：Supabase 專案 → 左側「SQL Editor」→ 整段貼上 → 按「Run」
+-- 可重複執行（會清除舊資料，重新建立；教官密碼會回到預設 8888）
+-- =====================================================================
+
+drop function if exists public.quiz_poll(text);
+drop function if exists public.quiz_join(text, text);
+drop function if exists public.quiz_answer(text, int, text);
+drop function if exists public.quiz_host(text, text, int);
+drop function if exists public.quiz_host(text, text, int, jsonb);
+drop table if exists public.quiz_answers;
+drop table if exists public.quiz_participants;
+drop table if exists public.quiz_state;
+
+-- 場次狀態＋題庫設定（只有一列）
+create table public.quiz_state (
+  id          int primary key default 1 check (id = 1),
+  round       int not null default 1,
+  status      text not null default 'waiting' check (status in ('waiting','active','revealed','finished')),
+  current_q   int not null default 0,
+  seconds     int not null default 20,
+  started_at  timestamptz,
+  deadline_at timestamptz,
+  host_hash   text not null,
+  config      jsonb not null
+);
+-- 報到名單（只記單位，不記姓名）
+create table public.quiz_participants (
+  round int not null, device_id text not null, unit text not null,
+  joined_at timestamptz not null default now(),
+  primary key (round, device_id)
+);
+-- 作答紀錄（每支手機每題限一筆）
+create table public.quiz_answers (
+  round int not null, device_id text not null, q int not null,
+  answer text not null check (answer in ('T','F')),
+  answered_at timestamptz not null default now(),
+  primary key (round, device_id, q)
+);
+
+insert into public.quiz_state (id, host_hash, config) values (1,
+  encode(sha256(convert_to('8888','UTF8')),'hex'),
+  $cfg${
+    "units": ["保安隊", "東堤中隊", "和平隊", "刑警隊"],
+    "seconds": 20,
+    "passRate": 0.6,
+    "questions": [
+      {"text": "10/31 新制上路後，汽機車毒駕「拒測」首犯罰 27 萬元，且不論車主是誰，車子一律移置保管送監理站沒入。", "answer": true,
+       "comment": "正解【⭕ 是】：新制拒測首犯 27 萬，依第 35 條第 9 項不論車主為誰一律扣車送監理站沒入。"},
+      {"text": "處理單純交通事故，就可以直接要求快篩並拖吊移置車輛。", "answer": false,
+       "comment": "正解【❌ 否】：嚴禁無差別普篩！須具備觀測表【壹】或【貳】客觀異常之一才能啟動唾篩。"},
+      {"text": "駕駛人現場「拒絕唾液快篩」且「拒絕自願採尿」，可以直接用「拒測／拒採尿」當理由上銬逮捕。", "answer": false,
+       "comment": "正解【❌ 否】：拒測或拒採尿本身不是逮捕理由，須具「不能安全駕駛客觀情狀」始得依刑訴第 88 條逮捕。"},
+      {"text": "唾液快篩失敗達 2 次（無 C 線）時，視同拒測，應當場開立 27 萬元拒測紅單並扣車。", "answer": false,
+       "comment": "正解【❌ 否】：失敗 2 次不等於拒測，現場暫不開單扣車，應先詢問是否願意配合「自願採尿」。"},
+      {"text": "員警攔查車輛時，發現車內有毒品，且駕駛人無行車異常及精神狀況均正常情況下，得直接實施唾液快篩？", "answer": false,
+       "comment": "正解【❌ 否】：【壹】與【貳】皆無異常時嚴禁毒駕普篩；毒品另依毒品案偵辦，觀測表仍須照實填寫記錄狀態。"}
+    ]
+  }$cfg$::jsonb);
+
+-- 權限：資料表一律不開放直接讀寫，只能透過下方函式
+alter table public.quiz_state        enable row level security;
+alter table public.quiz_participants enable row level security;
+alter table public.quiz_answers      enable row level security;
+revoke all on public.quiz_state, public.quiz_participants, public.quiz_answers from anon, authenticated;
+
+-- 輪詢（學員只拿得到目前題目的文字，拿不到正解與短評）
+create function public.quiz_poll(p_device text)
+returns json language plpgsql security definer set search_path = public as $$
+declare s quiz_state; r json;
+begin
+  update quiz_state set status = 'revealed' where id = 1 and status = 'active' and now() > deadline_at;
+  select * into s from quiz_state where id = 1;
+  select json_build_object(
+    'now',      floor(extract(epoch from clock_timestamp()) * 1000),
+    'round',    s.round,
+    'status',   s.status,
+    'q',        s.current_q,
+    'nq',       jsonb_array_length(s.config->'questions'),
+    'qtext',    case when s.status in ('active','revealed') then s.config->'questions'->(s.current_q - 1)->>'text' end,
+    'unitList', s.config->'units',
+    'seconds',  s.seconds,
+    'deadline', case when s.deadline_at is null then null else floor(extract(epoch from s.deadline_at) * 1000) end,
+    'total',    (select count(*) from quiz_participants where round = s.round),
+    'units',    coalesce((select json_agg(json_build_object('u', unit, 'n', n) order by n desc, unit)
+                            from (select unit, count(*) n from quiz_participants where round = s.round group by unit) x), '[]'::json),
+    'me_unit',  (select unit from quiz_participants where round = s.round and device_id = p_device),
+    'me_ans',   (select answer from quiz_answers where round = s.round and device_id = p_device and q = s.current_q),
+    'answered', (select count(*) from quiz_answers where round = s.round and q = s.current_q),
+    'counts',   case when s.status in ('revealed','finished') then
+                  (select json_build_object('t', count(*) filter (where answer = 'T'), 'f', count(*) filter (where answer = 'F'))
+                     from quiz_answers where round = s.round and q = s.current_q) end,
+    'summary',  case when s.status = 'finished' then
+                  coalesce((select json_agg(json_build_object('q', q, 't', t, 'f', f) order by q)
+                              from (select q, count(*) filter (where answer = 'T') t, count(*) filter (where answer = 'F') f
+                                      from quiz_answers where round = s.round group by q) y), '[]'::json) end
+  ) into r;
+  return r;
+end $$;
+
+-- 報到
+create function public.quiz_join(p_device text, p_unit text)
+returns json language plpgsql security definer set search_path = public as $$
+declare rd int; u text := btrim(coalesce(p_unit, ''));
+begin
+  if length(coalesce(p_device, '')) < 8 or length(p_device) > 64 then return json_build_object('ok', false, 'err', 'bad_device'); end if;
+  if length(u) < 1 or length(u) > 20 then return json_build_object('ok', false, 'err', 'bad_unit'); end if;
+  select round into rd from quiz_state where id = 1;
+  insert into quiz_participants (round, device_id, unit) values (rd, p_device, u)
+  on conflict (round, device_id) do update set unit = excluded.unit;
+  return json_build_object('ok', true, 'round', rd);
+end $$;
+
+-- 作答（目前這一題、時間內、已報到，每題限一次；寬限 1.5 秒網路延遲）
+create function public.quiz_answer(p_device text, p_q int, p_ans text)
+returns json language plpgsql security definer set search_path = public as $$
+declare s quiz_state;
+begin
+  select * into s from quiz_state where id = 1;
+  if s.status not in ('active','revealed') or s.current_q <> p_q or now() > s.deadline_at + interval '1.5 seconds' then
+    return json_build_object('ok', false, 'err', 'closed');
+  end if;
+  if p_ans not in ('T','F') then return json_build_object('ok', false, 'err', 'bad_answer'); end if;
+  if not exists (select 1 from quiz_participants where round = s.round and device_id = p_device) then
+    return json_build_object('ok', false, 'err', 'not_joined');
+  end if;
+  insert into quiz_answers (round, device_id, q, answer) values (s.round, p_device, p_q, p_ans) on conflict do nothing;
+  return json_build_object('ok', true, 'ans', (select answer from quiz_answers where round = s.round and device_id = p_device and q = p_q));
+end $$;
+
+-- 教官控場（需密碼）：check／get_config／save_config／set_pin／start／reveal／finish／reset
+create function public.quiz_host(p_pin text, p_action text, p_q int default null, p_data jsonb default null)
+returns json language plpgsql security definer set search_path = public as $$
+declare s quiz_state; n int; i int; qs jsonb; sec int; newpin text;
+begin
+  select * into s from quiz_state where id = 1;
+  if encode(sha256(convert_to(coalesce(p_pin, ''), 'UTF8')), 'hex') <> s.host_hash then
+    perform pg_sleep(1);   -- 密碼錯誤延遲 1 秒，防止被程式猜密碼
+    return json_build_object('ok', false, 'err', 'bad_pin');
+  end if;
+  n := jsonb_array_length(s.config->'questions');
+
+  if p_action = 'check' then
+    null;
+  elsif p_action = 'get_config' then
+    return json_build_object('ok', true, 'config', s.config);
+  elsif p_action = 'save_config' then
+    if s.status = 'active' then return json_build_object('ok', false, 'err', 'busy'); end if;
+    qs := p_data->'questions';
+    if jsonb_typeof(qs) <> 'array' or jsonb_array_length(qs) < 1 or jsonb_array_length(qs) > 50 then
+      return json_build_object('ok', false, 'err', 'bad_questions');
+    end if;
+    for i in 0 .. jsonb_array_length(qs) - 1 loop
+      if length(btrim(coalesce(qs->i->>'text', ''))) = 0 or jsonb_typeof(qs->i->'answer') <> 'boolean' then
+        return json_build_object('ok', false, 'err', 'bad_questions', 'at', i + 1);
+      end if;
+    end loop;
+    if jsonb_typeof(p_data->'units') <> 'array' then return json_build_object('ok', false, 'err', 'bad_units'); end if;
+    sec := coalesce((p_data->>'seconds')::int, 20);
+    if sec < 5 or sec > 180 then return json_build_object('ok', false, 'err', 'bad_seconds'); end if;
+    update quiz_state set config = jsonb_build_object(
+        'units', p_data->'units', 'seconds', sec,
+        'passRate', coalesce((p_data->>'passRate')::numeric, 0.6), 'questions', qs)
+     where id = 1;
+  elsif p_action = 'set_pin' then
+    newpin := btrim(coalesce(p_data->>'pin', ''));
+    if length(newpin) < 4 then return json_build_object('ok', false, 'err', 'short_pin'); end if;
+    update quiz_state set host_hash = encode(sha256(convert_to(newpin, 'UTF8')), 'hex') where id = 1;
+  elsif p_action = 'start' then
+    if p_q is null or p_q < 1 or p_q > n then return json_build_object('ok', false, 'err', 'bad_q'); end if;
+    sec := coalesce((s.config->>'seconds')::int, 20);
+    update quiz_state set status = 'active', current_q = p_q, seconds = sec,
+           started_at = now(), deadline_at = now() + make_interval(secs => sec) where id = 1;
+  elsif p_action = 'reveal' then
+    update quiz_state set status = 'revealed', deadline_at = least(deadline_at, now()) where id = 1 and status = 'active';
+  elsif p_action = 'finish' then
+    update quiz_state set status = 'finished' where id = 1;
+  elsif p_action = 'reset' then
+    update quiz_state set round = round + 1, status = 'waiting', current_q = 0, started_at = null, deadline_at = null where id = 1;
+  else
+    return json_build_object('ok', false, 'err', 'bad_action');
+  end if;
+  return json_build_object('ok', true);
+end $$;
+
+revoke all on function public.quiz_poll(text)                    from public;
+revoke all on function public.quiz_join(text, text)              from public;
+revoke all on function public.quiz_answer(text, int, text)       from public;
+revoke all on function public.quiz_host(text, text, int, jsonb)  from public;
+grant execute on function public.quiz_poll(text)                   to anon, authenticated;
+grant execute on function public.quiz_join(text, text)             to anon, authenticated;
+grant execute on function public.quiz_answer(text, int, text)      to anon, authenticated;
+grant execute on function public.quiz_host(text, text, int, jsonb) to anon, authenticated;
+</script>
+
+<script>
+/* ===================================================================
+   連線設定：不需手動修改。請用「網址加 ?host」開啟本檔案，
+   依「設定精靈」操作後按「下載設定好的檔案」，系統會自動填好這一行。
+   =================================================================== */
+const CONN = {"url":"https://tnnrozwazgzleqnddicl.supabase.co","key":"sb_publishable_Vo82m3ZV8Wd-hsYQIl-GZA_ORAFl3lB"}; /*@@CONN@@*/
+
+/* =================== 以下為程式，不需修改 =================== */
+const ORIGINAL_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+const IS_HOST = new URLSearchParams(location.search).has("host");
+const store = (s) => ({
+  get(k){ try { return s.getItem(k); } catch(e){ return null; } },
+  set(k,v){ try { s.setItem(k, v); } catch(e){} },
+  del(k){ try { s.removeItem(k); } catch(e){} }
+});
+const LS = store(window.localStorage), SS = store(window.sessionStorage);
+const app = document.getElementById("app");
+function esc(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function toast(m){ const t = document.createElement("div"); t.className = "toast"; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 2200); }
+
+/* ---------- 連線 ---------- */
+function normUrl(u){ return String(u || "").trim().replace(/\/+$/,"").replace(/\/rest\/v1$/,"").replace(/\/+$/,""); }
+function cfg(){ return { url: normUrl(CONN.url || LS.get("dq_url") || ""), key: (CONN.key || LS.get("dq_key") || "").trim(), embedded: !!(CONN.url && CONN.key) }; }
+const URL_OK = u => /^https:\/\/[^/\s]+$/.test(u) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(u);
+function hasCfg(){ const c = cfg(); return URL_OK(c.url) && c.key.length > 10; }
+let offset = 0, bestRtt = Infinity;
+async function rpc(name, args, timeoutMs, override){
+  const c = override || cfg();
+  const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), timeoutMs || 6000);
+  try {
+    const res = await fetch(`${c.url}/rest/v1/rpc/${name}`, {
+      method:"POST", signal: ctl.signal, cache:"no-store",
+      headers:{ "Content-Type":"application/json", "apikey": c.key, "Authorization": "Bearer " + c.key },
+      body: JSON.stringify(args || {})
+    });
+    if (!res.ok) { const e = new Error("HTTP " + res.status); e.status = res.status; throw e; }
+    return await res.json();
+  } finally { clearTimeout(tm); }
+}
+async function poll(device){
+  const t0 = Date.now();
+  const s = await rpc("quiz_poll", { p_device: device || "" });
+  const rtt = Date.now() - t0, est = s.now - (t0 + rtt / 2);
+  if (rtt <= bestRtt * 1.5 || Math.abs(est - offset) > 2000) { offset = est; bestRtt = Math.min(bestRtt, rtt); }
+  return s;
+}
+function remain(s){ return s && s.deadline ? Math.max(0, (s.deadline - (Date.now() + offset)) / 1000) : 0; }
+function setNet(ok){ document.getElementById("net").classList.toggle("on", !ok); }
+function connErr(e){
+  if (e.status === 404) return "連得到 Supabase，但找不到測驗函式：第 2 步的 SQL 可能還沒執行成功，請重新貼上執行。";
+  if (e.status === 401 || e.status === 403) return "金鑰不正確：請重新複製 Publishable key（sb_publishable_ 開頭）。";
+  if (e.name === "AbortError") return "連線逾時：請檢查網址是否正確、網路是否正常。";
+  if (e.status) return "Supabase 回應錯誤（" + e.message + "）。";
+  return "連不到這個網址：請確認 Project URL 是否正確（應為 https://xxxx.supabase.co），或網路是否擋住 supabase.co。";
+}
+
+/* ===================================================================
+   學員端
+   =================================================================== */
+function studentInit(){
+  let device = LS.get("dq_device");
+  if (!device) { device = "d" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); LS.set("dq_device", device); }
+  let S = null, pick = null, other = false, pending = {}, sendErr = {}, joining = false, changeUnit = false, lastKey = "";
+  const unitList = () => (S && Array.isArray(S.unitList)) ? S.unitList : [];
+
+  function render(force){
+    const pill = document.getElementById("topRight");
+    if (!hasCfg()) {
+      pill.innerHTML = "";
+      app.innerHTML = `<main><div class="card center"><div class="big-ic">⚙️</div><p class="h">測驗尚未設定連線</p><p class="sub">請教官用本頁網址加上「?host」開啟，依設定精靈完成設定。</p></div>${footHTML()}</main>`;
+      return;
+    }
+    if (!S) { app.innerHTML = `<main><div class="card center"><p class="h">連線中<span class="dots"></span></p></div></main>`; return; }
+    const joined = !!S.me_unit && !changeUnit;
+    pill.innerHTML = joined ? `<span class="unit-pill">【${esc(S.me_unit)}】</span>` : "";
+    const key = [joined, S.status, S.q, S.qtext, S.me_ans, pending[S.q], sendErr[S.q], S.total, JSON.stringify(unitList()), joined ? "" : (pick + "|" + other), remain(S) > 0].join("~");
+    if (!force && key === lastKey) { tick(); return; }
+    lastKey = key;
+
+    if (!joined) {
+      const inp = document.getElementById("otherIn"), val = other ? (inp ? inp.value : (pick || "")) : "";
+      const list = unitList();
+      app.innerHTML = `<main><div class="card">
+        <p class="lbl">請選擇您的所屬單位</p>
+        <p class="hint">只填單位、不填姓名，作答不會顯示個人資料。</p>
+        <div class="units">${list.map(u => `<button type="button" class="ubtn${!other && pick === u ? " on" : ""}" data-unit="${esc(u)}">${esc(u)}</button>`).join("")}
+          <button type="button" class="ubtn${other ? " on" : ""}" data-unit="__other">其他單位</button></div>
+        <div class="other" ${other ? "" : "hidden"}><input type="text" id="otherIn" maxlength="20" placeholder="請輸入單位名稱" value="${esc(val)}" autocomplete="off"></div>
+        <button type="button" class="primary" id="joinBtn" ${canJoin(val) ? "" : "disabled"}>${joining ? "報到中…" : "✅ 報到進場"}</button>
+        <p class="note">目前全場已進場 ${S.total} 人</p>
+      </div>${footHTML()}</main>`;
+      if (other && !val) { const n = document.getElementById("otherIn"); if (n) n.focus(); }
+      return;
+    }
+    const q = S.q, mine = S.me_ans || pending[q] || null;
+    const mineTxt = mine === "T" ? "⭕ 是" : mine === "F" ? "❌ 否" : "未作答";
+    if (S.status === "waiting") {
+      app.innerHTML = `<main><div class="card center"><div class="big-ic">✅</div>
+        <p class="h">【${esc(S.me_unit)}】報到成功！</p>
+        <p class="sub">等待教官開啟第 1 題<span class="dots"></span></p>
+        <span class="count">目前全場已進場 ${S.total} 人</span></div>${footHTML(true)}</main>`;
+    } else if (S.status === "active") {
+      const over = remain(S) <= 0;
+      let lock = "";
+      if (mine && sendErr[q] === "closed") lock = `<div class="locked warn">送出時已截止，本題未計入</div>`;
+      else if (mine) lock = `<div class="locked">已送出：${mineTxt}，等待其他同仁作答…</div>`;
+      else if (over) lock = `<div class="locked warn">⏰ 時間到，本題未作答</div>`;
+      else if (sendErr[q] === "net") lock = `<div class="locked warn">網路不穩，送出失敗，請再點一次</div>`;
+      const dis = mine || over ? "disabled" : "";
+      app.innerHTML = `<main><div class="card">
+        <div class="qmeta"><span>第 ${q} 題／共 ${S.nq} 題</span><span class="timer" id="tm">--</span></div>
+        <div class="tbar" id="tb"><i id="tbi" style="width:100%"></i></div>
+        <p class="qtext">${esc(S.qtext || "")}</p>
+        <div class="ans">
+          <button type="button" class="abtn t${mine === "T" ? " pick" : ""}" data-ans="T" ${dis}><span>⭕</span>是</button>
+          <button type="button" class="abtn f${mine === "F" ? " pick" : ""}" data-ans="F" ${dis}><span>❌</span>否</button>
+        </div>${lock}</div></main>`;
+      tick();
+    } else if (S.status === "revealed") {
+      app.innerHTML = `<main><div class="card center"><div class="big-ic">🔒</div>
+        <p class="h">第 ${q} 題作答已結束</p><p class="sub">請聽教官簡短提示</p>
+        <span class="mine">你的作答：${sendErr[q] === "closed" ? "未作答（逾時）" : mineTxt}</span></div></main>`;
+    } else {
+      app.innerHTML = `<main><div class="card center"><div class="big-ic">🎓</div>
+        <p class="h">✅ 隨堂測驗結束，正式課程開始！</p><p class="sub">感謝【${esc(S.me_unit)}】的參與。</p></div></main>`;
+    }
+  }
+  function footHTML(canChange){
+    return `<div class="foot">${canChange ? `<button type="button" data-act="change">更換單位</button>・` : ""}<button type="button" data-act="host">教官控場</button></div>`;
+  }
+  function canJoin(v){
+    if (joining) return false;
+    if (other) { const inp = document.getElementById("otherIn"); return ((inp ? inp.value : v) || "").trim().length > 0; }
+    return !!pick;
+  }
+  function tick(){
+    if (!S || S.status !== "active") return;
+    const r = remain(S), tm = document.getElementById("tm"), tbi = document.getElementById("tbi"), tb = document.getElementById("tb");
+    if (tm) { tm.textContent = Math.ceil(r); tm.classList.toggle("low", r <= 5); }
+    if (tbi) tbi.style.width = (r / (S.seconds || 20) * 100) + "%";
+    if (tb) tb.classList.toggle("low", r <= 5);
+    if (r <= 0 && !(S.me_ans || pending[S.q]) && document.querySelector(".abtn:not([disabled])")) render(true);
+  }
+  async function doJoin(){
+    const unit = other ? document.getElementById("otherIn").value.trim() : pick;
+    if (!unit) return;
+    joining = true; render(true);
+    try {
+      const r = await rpc("quiz_join", { p_device: device, p_unit: unit });
+      if (r.ok) { LS.set("dq_unit", unit); pick = unit; changeUnit = false; S = await poll(device); setNet(true); }
+      else alert("報到失敗：單位名稱請在 20 字以內。");
+    } catch(e) { setNet(false); alert("網路連線失敗，請確認手機網路後再按一次。"); }
+    joining = false; render(true);
+  }
+  async function doAnswer(ans){
+    const q = S.q;
+    if (S.me_ans || pending[q] || remain(S) <= 0) return;
+    pending[q] = ans; delete sendErr[q]; render(true);
+    for (let i = 0; i < 3; i++) {
+      try {
+        const r = await rpc("quiz_answer", { p_device: device, p_q: q, p_ans: ans }, 4000);
+        if (r.ok) { pending[q] = r.ans; if (S.q === q) S.me_ans = r.ans; setNet(true); render(true); return; }
+        if (r.err === "not_joined") { delete pending[q]; S.me_unit = null; sendErr[q] = "net"; }
+        else sendErr[q] = "closed";
+        render(true); return;
+      } catch(e) { setNet(false); await new Promise(z => setTimeout(z, 500)); }
+    }
+    delete pending[q]; sendErr[q] = "net"; render(true);
+  }
+  app.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.unit) {
+      if (b.dataset.unit === "__other") { other = true; const sv = LS.get("dq_unit"); pick = sv && !unitList().includes(sv) ? sv : ""; }
+      else { other = false; pick = b.dataset.unit; }
+      render(true); return;
+    }
+    if (b.id === "joinBtn") { doJoin(); return; }
+    if (b.dataset.ans) { doAnswer(b.dataset.ans); return; }
+    if (b.dataset.act === "change") { changeUnit = true; pick = S.me_unit; other = !unitList().includes(pick); render(true); return; }
+    if (b.dataset.act === "host") location.href = location.pathname + "?host";
+  });
+  app.addEventListener("input", e => { if (e.target.id === "otherIn") { const jb = document.getElementById("joinBtn"); if (jb) jb.disabled = !canJoin(); } });
+  app.addEventListener("keydown", e => { if (e.target.id === "otherIn" && e.key === "Enter" && canJoin()) doJoin(); });
+  const saved = LS.get("dq_unit");
+  if (saved) pick = saved;
+  let firstPoll = true;
+  async function loop(){
+    if (hasCfg()) {
+      try {
+        const s = await poll(device); setNet(true);
+        if (S && (s.q !== S.q || s.round !== S.round)) { pending = {}; sendErr = {}; }
+        if (S && s.round !== S.round) changeUnit = false;
+        S = s;
+        if (firstPoll && saved) { other = !unitList().includes(saved); firstPoll = false; }
+      } catch(e) { setNet(false); }
+    }
+    render();
+    setTimeout(loop, document.hidden ? 4000 : 1500);
+  }
+  setInterval(tick, 250);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) loop(); });
+  render(true); loop();
+}
+
+/* ===================================================================
+   教官端（網址加 ?host）
+   =================================================================== */
+function hostInit(){
+  document.body.classList.add("host");
+  document.getElementById("ttl").textContent = "隨堂測驗・教官控場看板";
+  let S = null, CFG = null, pin = SS.get("dq_pin") || "", busy = false, ok = true, lastKey = "";
+  let tab = "ctrl", draft = null, dirty = false, wizStep = hasCfg() ? 4 : 1;
+
+  /* ---------- 共用：下載已填好連線的檔案、複製 SQL ---------- */
+  function configuredHTML(){
+    const c = cfg();
+    const line = `const CONN = ${JSON.stringify({ url: c.url, key: c.key })}; /*@@CONN@@*/`;
+    return ORIGINAL_HTML.replace(/const CONN = \{[^\n]*\}; \/\*@@CONN@@\*\//, () => line);
+  }
+  function downloadConfigured(){
+    const blob = new Blob([configuredHTML()], { type:"text/html;charset=utf-8" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "quiz.html";
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast("已下載設定好的 quiz.html");
+  }
+  async function copyText(t, okMsg){
+    try { await navigator.clipboard.writeText(t); toast(okMsg); }
+    catch(e) {
+      const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); toast(okMsg); } catch(err) { alert("無法自動複製，請改用下載的 SQL 檔。"); }
+      ta.remove();
+    }
+  }
+  const sqlText = () => document.getElementById("sqlText").textContent.trim() + "\n";
+
+  /* ---------- 設定精靈（第一次使用） ---------- */
+  function wizardView(msg, msgCls){
+    document.getElementById("topRight").innerHTML = "";
+    const c = cfg(), st = n => wizStep > n ? "step done" : "step";
+    app.innerHTML = `<div class="wiz">
+      <h2>第一次使用：設定精靈</h2>
+      <p class="empty" style="margin:0">照順序做完 4 步就能上課。不需要修改任何程式碼。</p>
+      <div class="panel ${st(1)}"><div class="n">1</div><div>
+        <h3>建立 Supabase 專案</h3>
+        <p>到 <b class="k">supabase.com</b> 登入，按「New project」建立一個專案（地區選 Singapore）。已經建好就直接做第 2 步。</p></div></div>
+      <div class="panel ${st(2)}"><div class="n">2</div><div>
+        <h3>建立測驗資料表</h3>
+        <ol><li>按下面的按鈕複製 SQL。</li>
+          <li>回到 Supabase，點左側的「<b class="k">SQL Editor</b>」，開一個新查詢。</li>
+          <li>貼上後按右下角「<b class="k">Run</b>」，看到「Success」就完成了。</li></ol>
+        <div class="row"><button type="button" class="cbtn small" id="wCopy">📋 複製 SQL</button></div></div></div>
+      <div class="panel ${st(3)}"><div class="n">3</div><div>
+        <h3>貼上連線資料並測試</h3>
+        <ol><li><b class="k">Project URL</b>：Supabase 左側齒輪「Project Settings」→「Data API」（或「API」），複製網址。後面帶 /rest/v1/ 也沒關係，系統會自動去掉。</li>
+          <li><b class="k">Publishable key</b>：同一區「API Keys」頁，複製 <b class="k">sb_publishable_</b> 開頭的那一把（舊介面叫 anon public）。</li></ol>
+        <div class="warnbox">⚠ 千萬不要貼 <b>sb_secret_</b> 開頭的秘密金鑰。那把可以刪改整個資料庫，不能放進網頁。</div>
+        <label class="fld"><span>Project URL</span><input id="wUrl" value="${esc(c.url)}" placeholder="https://xxxxxxxx.supabase.co"></label>
+        <label class="fld"><span>Publishable key</span><input id="wKey" value="${esc(c.key)}" placeholder="sb_publishable_……"></label>
+        <div class="row"><button type="button" class="cbtn small go" id="wTest">測試連線</button><span class="msg ${msgCls || ""}" id="wMsg">${esc(msg || "")}</span></div></div></div>
+      <div class="panel ${st(4)}"><div class="n">4</div><div>
+        <h3>下載設定好的檔案，上傳到網站</h3>
+        <p>按下面按鈕，會下載一份已經填好連線資料的 <b class="k">quiz.html</b>。把它上傳到你的網站，用那個網址做成 QR Code 給學員掃就好。</p>
+        <p>教官控場：同一個網址後面加上 <b class="k">?host</b>。預設教官密碼 <b class="k">8888</b>，進去後請到「設定」分頁改掉。</p>
+        <div class="row"><button type="button" class="cbtn small go" id="wDown" ${wizStep >= 4 ? "" : "disabled"}>⬇ 下載設定好的 quiz.html</button>
+          <button type="button" class="cbtn small" id="wLogin" ${wizStep >= 4 ? "" : "disabled"}>先在這台電腦進入控場看板 →</button></div></div></div>
+    </div>`;
+    app.querySelectorAll(".step").forEach(el => { el.style.display = "grid"; });
+  }
+  async function wizardTest(){
+    const url = normUrl(document.getElementById("wUrl").value), key = document.getElementById("wKey").value.trim();
+    const m = document.getElementById("wMsg");
+    if (/^sb_secret_/.test(key)) { m.className = "msg err"; m.textContent = "這是秘密金鑰（sb_secret_），不能使用！請改貼 sb_publishable_ 開頭的那一把，並建議到 Supabase 把這把秘密金鑰刪除重發。"; return; }
+    if (!URL_OK(url)) { m.className = "msg err"; m.textContent = "網址格式不對，應該像 https://xxxxxxxx.supabase.co"; return; }
+    if (key.length < 20) { m.className = "msg err"; m.textContent = "金鑰太短，請確認有完整複製。"; return; }
+    m.className = "msg"; m.textContent = "測試中…";
+    try {
+      const s = await rpc("quiz_poll", { p_device: "" }, 8000, { url, key });
+      if (typeof s.nq !== "number") throw Object.assign(new Error("HTTP 404"), { status: 404 });
+      LS.set("dq_url", url); LS.set("dq_key", key); wizStep = 4;
+      wizardView("✅ 連線成功！題庫已就緒（" + s.nq + " 題）", "ok");
+    } catch(e) { m.className = "msg err"; m.textContent = "❌ " + connErr(e); }
+  }
+
+  /* ---------- 登入 ---------- */
+  function loginView(err){
+    document.getElementById("topRight").innerHTML = "";
+    app.innerHTML = `<div class="login"><div class="panel">
+      <h3>請輸入教官密碼</h3>
+      <input type="password" id="pin" autocomplete="off" value="">
+      <div class="err" id="perr">${esc(err || "")}</div>
+      <button type="button" class="cbtn go" id="pinGo" style="width:100%">進入控場看板</button>
+      <p class="empty" style="margin-top:14px">第一次使用預設密碼為 8888。<button type="button" class="mini" id="toWiz" style="margin-left:6px">重新設定連線</button></p></div></div>`;
+    const p = document.getElementById("pin"); if (p) p.focus();
+  }
+  async function tryLogin(){
+    const v = document.getElementById("pin").value.trim(), e = document.getElementById("perr");
+    e.textContent = "驗證中…";
+    try {
+      const r = await rpc("quiz_host", { p_pin: v, p_action: "get_config" });
+      if (r.ok) { pin = v; SS.set("dq_pin", v); CFG = r.config; tab = "ctrl"; lastKey = ""; app.innerHTML = ""; loop(); }
+      else e.textContent = "密碼錯誤";
+    } catch(err) { e.textContent = "❌ " + connErr(err); }
+  }
+  async function hostCall(action, q, data){
+    const r = await rpc("quiz_host", { p_pin: pin, p_action: action, p_q: q == null ? null : q, p_data: data == null ? null : data });
+    if (!r.ok && r.err === "bad_pin") { pin = ""; SS.del("dq_pin"); loginView("密碼已變更，請重新輸入"); throw new Error("bad_pin"); }
+    return r;
+  }
+  async function loadCfg(){ const r = await hostCall("get_config"); if (r.ok) CFG = r.config; return CFG; }
+
+  /* ---------- 版面：分頁 ---------- */
+  function shell(){
+    const warn = cfg().embedded ? "" : `<div class="banner"><div>⚠ 這份檔案還沒內建連線資料，學員手機會連不上。請下載設定好的檔案再上傳網站。<button type="button" class="mini" data-a="download">⬇ 下載設定好的 quiz.html</button></div></div>`;
+    const t = (id, name) => `<button type="button" class="htab" data-tab="${id}" aria-selected="${tab === id}">${name}</button>`;
+    app.innerHTML = `${warn}<nav class="htabs">${t("ctrl","📊 控場看板")}${t("edit","📝 題目編輯")}${t("set","⚙ 設定")}</nav><div id="hBody"></div>`;
+  }
+  function setTab(t){
+    if (tab === "edit" && t !== "edit" && dirty && !confirm("題目有修改尚未儲存，確定要離開嗎？（未儲存的修改會遺失）")) return;
+    if (t !== "edit") { dirty = false; draft = null; }
+    tab = t; lastKey = ""; shell();
+    if (t === "ctrl") render(true);
+    else if (t === "edit") { document.getElementById("hBody").innerHTML = `<div class="hwrap one"><div class="panel">讀取題庫中…</div></div>`; loadCfg().then(() => { draft = JSON.parse(JSON.stringify(CFG)); dirty = false; editView(); }).catch(() => {}); }
+    else { document.getElementById("hBody").innerHTML = `<div class="hwrap one"><div class="panel">讀取設定中…</div></div>`; loadCfg().then(setView).catch(() => {}); }
+    window.scrollTo({ top:0 });
+  }
+
+  /* ---------- 控場看板 ---------- */
+  function joinUrl(){ return location.origin + location.pathname; }
+  function render(force){
+    if (!pin) return;
+    document.getElementById("topRight").innerHTML = `<span style="font-size:15px;font-weight:800"><span class="dot${ok ? "" : " off"}"></span>${ok ? "連線正常" : "連線中斷"}${S ? `｜第 ${S.round} 梯次` : ""}</span>`;
+    if (tab !== "ctrl") return;
+    if (!document.getElementById("hBody")) shell();
+    if (!S || !CFG) return;
+    const key = [S.status, S.q, S.total, S.answered, JSON.stringify(S.units), JSON.stringify(S.counts), JSON.stringify(S.summary), busy, remain(S) > 0].join("~");
+    if (!force && key === lastKey) { tick(); return; }
+    lastKey = key;
+    const Q = CFG.questions || [], NQ = Q.length;
+    const unitsHtml = S.units.length ? `<div class="chips">${S.units.map(x => `<span class="chip">${esc(x.u)}<b>${x.n}</b></span>`).join("")}</div>` : `<p class="empty">尚無人報到</p>`;
+    const side = `<div class="panel"><h3>進場報到監控</h3><div class="total">${S.total}<small>人已進場</small></div>${unitsHtml}</div>`;
+    const stName = { waiting:"報到待機中", active:`第 ${S.q} 題作答中`, revealed:`第 ${S.q} 題已揭曉`, finished:"測驗結束" }[S.status];
+    const item = Q[S.q - 1] || { text: S.qtext || "", answer:true, comment:"" };
+    let stage = `<div class="hq-meta"><span class="status ${S.status}">${stName}</span>${S.status === "active" || S.status === "revealed" ? `<span class="hq-n">第 ${S.q} 題／共 ${NQ} 題</span>` : `<span class="hq-n">題庫共 ${NQ} 題・每題 ${CFG.seconds || 20} 秒</span>`}</div>`;
+    if (S.status === "waiting") {
+      const link = joinUrl(), web = /^https?:/.test(link);
+      stage += `<div class="panel"><div class="qrbox">${web ? `<img alt="報到 QR Code" src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=0&data=${encodeURIComponent(link)}" onerror="this.remove()">` : ""}
+        <div style="flex:1;min-width:240px"><p class="big">請掃描 QR Code<br>選擇單位後報到進場</p>
+        <p class="url">${web ? esc(link) : "（目前以本機檔案開啟；上傳網站後這裡會顯示學員報到網址與 QR Code）"}</p></div></div></div>
+        <p class="empty" style="font-size:17px">確認各單位都已進場後，按下方「▶ 開始第 1 題」。</p>`;
+    } else if (S.status === "active") {
+      stage += `<p class="hq-text">${esc(item.text)}</p><div class="htimer" id="htm">--</div><div class="hbar" id="hb"><i id="hbi" style="width:100%"></i></div>
+        <div class="answered">已作答 <b>${S.answered}</b> ／ 已進場 ${S.total} 人</div>`;
+    } else if (S.status === "revealed") {
+      stage += `<p class="hq-text">${esc(item.text)}</p>` + barsHTML(item);
+    } else {
+      stage += `<p class="done-h">✅ 隨堂測驗結束，正式課程開始！</p>` + summaryHTML(Q);
+    }
+    const d = busy ? "disabled" : "";
+    let main = "";
+    if (S.status === "waiting") main = `<button type="button" class="cbtn go" data-a="start" data-q="1" ${d || (NQ ? "" : "disabled")}>▶ 開始第 1 題</button>`;
+    else if (S.status === "active") main = `<button type="button" class="cbtn stop" data-a="reveal" ${d}>⏹ 立即截止本題</button>`;
+    else if (S.status === "revealed") main = S.q < NQ ? `<button type="button" class="cbtn" data-a="start" data-q="${S.q + 1}" ${d}>⏭ 下一題（第 ${S.q + 1} 題）</button>` : `<button type="button" class="cbtn go" data-a="finish" ${d}>🏁 結束測驗</button>`;
+    document.getElementById("hBody").innerHTML = `<div class="hwrap">${side}<div class="stage">${stage}</div></div>
+      <div class="ctrl">${main}<span class="sp"></span>
+      <button type="button" class="cbtn ghost" data-a="reset" ${d}>🔄 重置整場（開新梯次）</button>
+      <button type="button" class="cbtn ghost" data-a="logout">登出</button></div>`;
+    tick();
+  }
+  function barsHTML(item){
+    const c = S.counts || { t:0, f:0 }, total = Math.max(S.total, c.t + c.f), none = Math.max(0, total - c.t - c.f);
+    const pct = n => total ? Math.round(n / total * 100) : 0, pr = CFG.passRate == null ? 0.6 : CFG.passRate;
+    const right = item.answer ? c.t : c.f, rate = total ? right / total : 0, bad = rate < pr;
+    const row = (cls, label, n, isRight) => `<div class="brow ${cls}${isRight ? " right" : ""}"><span class="bl">${label}</span><span class="bt"><i style="width:${pct(n)}%"></i></span><span class="bv">${n} 人｜${pct(n)}%</span></div>`;
+    return `<div class="bars">${row("t","⭕ 選是",c.t,item.answer)}${row("f","❌ 選否",c.f,!item.answer)}${row("x","⏰ 逾時未答",none,false)}</div>
+      <div class="acc${bad ? " bad" : ""}">答對率 ${Math.round(rate * 100)}%（答對 ${right} 人／已進場 ${total} 人）${bad ? "　⚠ 低於 " + Math.round(pr * 100) + "%，觀念需加強" : ""}</div>
+      ${item.comment ? `<div class="comment">${esc(item.comment)}</div>` : ""}`;
+  }
+  function summaryHTML(Q){
+    const pr = CFG.passRate == null ? 0.6 : CFG.passRate;
+    const rows = Q.map((it, i) => {
+      const r = (S.summary || []).find(x => x.q === i + 1) || { t:0, f:0 };
+      const total = Math.max(S.total, r.t + r.f), right = it.answer ? r.t : r.f, rate = total ? right / total : 0;
+      return `<tr><td>第 ${i + 1} 題</td><td>${esc(it.text)}</td><td class="r">${it.answer ? "⭕ 是" : "❌ 否"}</td><td class="r${rate < pr ? " bad" : ""}">${Math.round(rate * 100)}%</td></tr>`;
+    }).join("");
+    return `<div class="panel"><table class="sum"><thead><tr><th style="width:5.5em">題號</th><th>題目</th><th style="width:5em">正解</th><th style="width:5em">答對率</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  function tick(){
+    if (tab !== "ctrl" || !S || S.status !== "active") return;
+    const r = remain(S), tm = document.getElementById("htm"), bi = document.getElementById("hbi"), hb = document.getElementById("hb");
+    if (tm) { tm.textContent = Math.ceil(r); tm.classList.toggle("low", r <= 5); }
+    if (bi) bi.style.width = (r / (S.seconds || 20) * 100) + "%";
+    if (hb) hb.classList.toggle("low", r <= 5);
+    if (r <= 0 && !busy && !tick.sent) { tick.sent = true; act("reveal").then(() => { tick.sent = false; }); }
+  }
+  async function act(action, q){
+    if (busy) return; busy = true; render(true);
+    try { await hostCall(action, q); S = await poll(""); ok = true; }
+    catch(e) { if (e.message === "bad_pin") { busy = false; return; } ok = false; }
+    busy = false; lastKey = ""; render(true);
+  }
+
+  /* ---------- 題目編輯 ---------- */
+  function editView(){
+    const locked = S && S.status === "active";
+    const Q = draft.questions;
+    document.getElementById("hBody").innerHTML = `<div class="hwrap one"><div class="stage">
+      <div class="panel"><h3>題目編輯</h3><p>可直接修改題目、正解與教官短評，用「↑」「↓」調整順序。改完記得按下方「💾 儲存題庫」。</p>
+        <p class="empty">短評只會在大螢幕揭曉時顯示，學員手機看不到；學員也拿不到正解。</p>
+        ${locked ? `<div class="warnbox">目前正在作答中，請等本題截止後再儲存。</div>` : ""}</div>
+      ${Q.map((it, i) => `<div class="qcard"><div class="qh"><b>第 ${i + 1} 題</b><span class="row" style="margin:0">
+          <button type="button" class="mini" data-mv="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""}>↑ 上移</button>
+          <button type="button" class="mini" data-mv="${i}" data-dir="1" ${i === Q.length - 1 ? "disabled" : ""}>↓ 下移</button>
+          <button type="button" class="mini del" data-del="${i}">🗑 刪除</button></span></div>
+        <span class="lab">題目</span><textarea rows="3" data-f="text" data-i="${i}" placeholder="請輸入題目（是非題）">${esc(it.text)}</textarea>
+        <span class="lab">正解</span><span class="tf"><button type="button" class="t${it.answer ? " on" : ""}" data-ansset="${i}" data-v="1">⭕ 是</button><button type="button" class="f${!it.answer ? " on" : ""}" data-ansset="${i}" data-v="0">❌ 否</button></span>
+        <span class="lab">教官一句話短評（揭曉時顯示在大螢幕，可留空）</span><textarea rows="2" data-f="comment" data-i="${i}">${esc(it.comment || "")}</textarea>
+      </div>`).join("")}
+      <button type="button" class="cbtn" id="qAdd" style="align-self:flex-start">＋ 新增題目</button>
+    </div></div>
+    <div class="edbar"><button type="button" class="cbtn go" id="qSave" ${locked ? "disabled" : ""}>💾 儲存題庫（${Q.length} 題）</button>
+      <button type="button" class="cbtn ghost" id="qUndo">放棄修改</button><span class="msg" id="qMsg">${dirty ? "● 有修改尚未儲存" : ""}</span></div>`;
+  }
+  function markDirty(){ dirty = true; const m = document.getElementById("qMsg"); if (m) { m.className = "msg"; m.textContent = "● 有修改尚未儲存"; } }
+  async function saveAll(newCfg, msgEl){
+    const m = document.getElementById(msgEl);
+    try {
+      const r = await hostCall("save_config", null, newCfg);
+      if (r.ok) { CFG = JSON.parse(JSON.stringify(newCfg)); lastKey = ""; if (m) { m.className = "msg ok"; m.textContent = "✅ 已儲存"; } toast("已儲存"); return true; }
+      const why = { busy:"作答中不能儲存，請等本題截止後再試。", bad_questions: r.at ? `第 ${r.at} 題的題目是空白的，請補上或刪除。` : "至少要有 1 題。", bad_seconds:"作答秒數請在 5～180 之間。", bad_units:"單位清單格式錯誤。" }[r.err] || r.err;
+      if (m) { m.className = "msg err"; m.textContent = "❌ " + why; }
+    } catch(e) { if (m && e.message !== "bad_pin") { m.className = "msg err"; m.textContent = "❌ " + connErr(e); } }
+    return false;
+  }
+
+  /* ---------- 設定 ---------- */
+  function setView(){
+    const c = cfg();
+    document.getElementById("hBody").innerHTML = `<div class="hwrap one"><div class="stage">
+      <div class="panel"><h3>報到與作答設定</h3>
+        <label class="fld"><span>報到快捷單位（一行一個）</span><textarea id="sUnits" rows="5">${esc((CFG.units || []).join("\n"))}</textarea><small>清單以外的單位，學員可以點「其他單位」自己輸入。</small></label>
+        <label class="fld"><span>每題作答秒數</span><input id="sSec" type="number" min="5" max="180" value="${CFG.seconds || 20}" style="max-width:160px"></label>
+        <label class="fld"><span>答對率警戒門檻（%）</span><input id="sPass" type="number" min="0" max="100" value="${Math.round((CFG.passRate == null ? 0.6 : CFG.passRate) * 100)}" style="max-width:160px"><small>答對率低於這個數字，大螢幕會亮紅框。</small></label>
+        <div class="row"><button type="button" class="cbtn small go" id="sSave">💾 儲存設定</button><span class="msg" id="sMsg"></span></div></div>
+      <div class="panel"><h3>更改教官密碼</h3>
+        <label class="fld"><span>新密碼（建議 6 碼以上）</span><input id="pNew" type="password" autocomplete="new-password" style="max-width:320px"></label>
+        <label class="fld"><span>再輸入一次</span><input id="pNew2" type="password" autocomplete="new-password" style="max-width:320px"></label>
+        <div class="row"><button type="button" class="cbtn small" id="pSave">更改密碼</button><span class="msg" id="pMsg"></span></div></div>
+      <div class="panel"><h3>連線與檔案</h3>
+        <p>Supabase 網址：<b>${esc(c.url)}</b></p>
+        <p>${c.embedded ? "✅ 這份檔案已內建連線資料，可以直接上傳網站給學員使用。" : "⚠ 這份檔案還沒內建連線資料（只存在這台電腦），學員手機會連不上。請下載設定好的檔案再上傳。"}</p>
+        <div class="row"><button type="button" class="cbtn small go" data-a="download">⬇ 下載設定好的 quiz.html</button>
+          <button type="button" class="cbtn small" id="sCopySql">📋 複製 SQL（重建資料表用）</button>
+          ${c.embedded ? "" : `<button type="button" class="cbtn small ghost" id="sForget">清除這台電腦的連線資料</button>`}</div>
+        <p class="empty">注意：重新執行 SQL 會清空所有題目、報到與作答紀錄，並把教官密碼恢復成 8888。</p></div>
+    </div></div>`;
+  }
+
+  /* ---------- 事件 ---------- */
+  app.addEventListener("click", async e => {
+    const b = e.target.closest("button"); if (!b) return;
+    // 精靈
+    if (b.id === "wCopy") { copyText(sqlText(), "已複製 SQL，請到 Supabase 的 SQL Editor 貼上執行"); if (wizStep < 3) { wizStep = 3; } return; }
+    if (b.id === "wTest") { wizardTest(); return; }
+    if (b.id === "wDown") { downloadConfigured(); return; }
+    if (b.id === "wLogin") { loginView(); return; }
+    if (b.id === "toWiz") { wizStep = 1; wizardView(); return; }
+    if (b.id === "pinGo") { tryLogin(); return; }
+    if (b.dataset.tab) { setTab(b.dataset.tab); return; }
+    const a = b.dataset.a;
+    if (a === "download") { downloadConfigured(); return; }
+    if (a === "logout") { pin = ""; SS.del("dq_pin"); loginView(); return; }
+    if (a === "reset" && !b.classList.contains("armed")) {
+      b.classList.add("armed"); b.textContent = "再按一次確認重置（目前梯次結束，開新梯次）";
+      setTimeout(() => { if (b.isConnected) { b.classList.remove("armed"); b.textContent = "🔄 重置整場（開新梯次）"; } }, 4000);
+      return;
+    }
+    if (a) { act(a, b.dataset.q ? Number(b.dataset.q) : null); return; }
+    // 題目編輯
+    if (b.dataset.mv !== undefined) { const i = +b.dataset.mv, j = i + +b.dataset.dir, Q = draft.questions; [Q[i], Q[j]] = [Q[j], Q[i]]; markDirty(); editView(); return; }
+    if (b.dataset.del !== undefined) {
+      if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = "再按一次確認刪除"; setTimeout(() => { if (b.isConnected) { b.classList.remove("armed"); b.textContent = "🗑 刪除"; } }, 3000); return; }
+      draft.questions.splice(+b.dataset.del, 1); markDirty(); editView(); return;
+    }
+    if (b.dataset.ansset !== undefined) { draft.questions[+b.dataset.ansset].answer = b.dataset.v === "1"; markDirty(); editView(); return; }
+    if (b.id === "qAdd") {
+      draft.questions.push({ text:"", answer:true, comment:"" }); markDirty(); editView();
+      const t = document.querySelectorAll('textarea[data-f="text"]'); const last = t[t.length - 1]; if (last) { last.focus(); last.scrollIntoView({ block:"center" }); }
+      return;
+    }
+    if (b.id === "qUndo") { draft = JSON.parse(JSON.stringify(CFG)); dirty = false; editView(); return; }
+    if (b.id === "qSave") {
+      const out = JSON.parse(JSON.stringify(draft));
+      out.questions = out.questions.map(q => ({ text: q.text.trim(), answer: !!q.answer, comment: (q.comment || "").trim() }));
+      if (await saveAll(out, "qMsg")) { draft = JSON.parse(JSON.stringify(CFG)); dirty = false; editView(); const m = document.getElementById("qMsg"); m.className = "msg ok"; m.textContent = "✅ 已儲存，學員端立即生效"; }
+      return;
+    }
+    // 設定
+    if (b.id === "sSave") {
+      const units = document.getElementById("sUnits").value.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 30);
+      const sec = Number(document.getElementById("sSec").value), pass = Number(document.getElementById("sPass").value);
+      const m = document.getElementById("sMsg");
+      if (!(sec >= 5 && sec <= 180)) { m.className = "msg err"; m.textContent = "❌ 作答秒數請在 5～180 之間"; return; }
+      if (!(pass >= 0 && pass <= 100)) { m.className = "msg err"; m.textContent = "❌ 門檻請在 0～100 之間"; return; }
+      await loadCfg().catch(() => {});
+      saveAll(Object.assign({}, CFG, { units, seconds: sec, passRate: pass / 100 }), "sMsg");
+      return;
+    }
+    if (b.id === "pSave") {
+      const p1 = document.getElementById("pNew").value.trim(), p2 = document.getElementById("pNew2").value.trim(), m = document.getElementById("pMsg");
+      if (p1.length < 4) { m.className = "msg err"; m.textContent = "❌ 密碼至少 4 碼（建議 6 碼以上）"; return; }
+      if (p1 !== p2) { m.className = "msg err"; m.textContent = "❌ 兩次輸入不一樣"; return; }
+      try { const r = await hostCall("set_pin", null, { pin: p1 }); if (r.ok) { pin = p1; SS.set("dq_pin", p1); m.className = "msg ok"; m.textContent = "✅ 密碼已更改，下次登入請用新密碼"; document.getElementById("pNew").value = document.getElementById("pNew2").value = ""; } }
+      catch(err) { if (err.message !== "bad_pin") { m.className = "msg err"; m.textContent = "❌ " + connErr(err); } }
+      return;
+    }
+    if (b.id === "sCopySql") { copyText(sqlText(), "已複製 SQL"); return; }
+    if (b.id === "sForget") { LS.del("dq_url"); LS.del("dq_key"); pin = ""; SS.del("dq_pin"); wizStep = 1; wizardView(); return; }
+  });
+  app.addEventListener("input", e => {
+    const t = e.target;
+    if (t.dataset && t.dataset.f && draft) { draft.questions[+t.dataset.i][t.dataset.f] = t.value; markDirty(); }
+  });
+  app.addEventListener("keydown", e => { if (e.target.id === "pin" && e.key === "Enter") tryLogin(); });
+  window.addEventListener("beforeunload", e => { if (tab === "edit" && dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+  let running = false;
+  async function loop(){
+    if (running) return; running = true;
+    while (pin) {
+      if (!busy) {
+        try { S = await poll(""); ok = true; if (!CFG) await loadCfg(); } catch(e) { ok = false; }
+        render();
+      }
+      await new Promise(z => setTimeout(z, 1000));
+    }
+    running = false;
+  }
+  setInterval(tick, 200);
+  if (!hasCfg()) wizardView();
+  else if (pin) { shell(); loop(); }
+  else loginView();
+}
+
+if (IS_HOST) hostInit(); else studentInit();
+</script></body></html>
