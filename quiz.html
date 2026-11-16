@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="zh-TW"><script type="text/javascript" src="chrome-extension://fjnbnpbmkenffdnngjfgmeleoegfcffe/static/js/contentInt.js"></script><head><script type="text/javascript" src="chrome-extension://fjnbnpbmkenffdnngjfgmeleoegfcffe/static/js/contentInt.js"></script>
+<html lang="zh-TW">
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1B365D">
@@ -394,7 +395,7 @@ grant execute on function public.quiz_host(text, text, int, jsonb) to anon, auth
    連線設定：不需手動修改。請用「網址加 ?host」開啟本檔案，
    依「設定精靈」操作後按「下載設定好的檔案」，系統會自動填好這一行。
    =================================================================== */
-const CONN = {"url":"https://tnnrozwazgzleqnddicl.supabase.co","key":"sb_publishable_hVIZLkYqtGWCnCGSa7EZ4Q_H0011dn4"}; /*@@CONN@@*/
+const CONN = { url: "", key: "" }; /*@@CONN@@*/
 
 /* =================== 以下為程式，不需修改 =================== */
 const ORIGINAL_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
@@ -602,6 +603,77 @@ function hostInit(){
   let S = null, CFG = null, pin = SS.get("dq_pin") || "", busy = false, ok = true, lastKey = "";
   let tab = "ctrl", draft = null, dirty = false, wizStep = hasCfg() ? 4 : 1;
 
+  /* ---------- 控場音效（Web Audio 即時合成，不需音檔、不需網路） ---------- */
+  const SFX = (() => {
+    let ctx = null, master = null, on = LS.get("dq_sfx") !== "0", vol = Number(LS.get("dq_vol") || 2);
+    const VOLS = [0, 0.35, 0.7, 1.0];
+    function ac(){
+      if (!ctx) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; ctx = new C(); master = ctx.createGain(); master.connect(ctx.destination); }
+      if (ctx.state === "suspended") ctx.resume();
+      master.gain.value = VOLS[vol] || 0.7;
+      return ctx;
+    }
+    function tone(freq, at, dur, type, peak, glide){
+      if (!on) return; const c = ac(); if (!c || c.state !== "running") return;
+      const t = c.currentTime + (at || 0), o = c.createOscillator(), g = c.createGain();
+      o.type = type || "sine"; o.frequency.setValueAtTime(freq, t);
+      if (glide) o.frequency.exponentialRampToValueAtTime(glide, t + dur);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak || 0.25, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
+      SFX.count = (SFX.count || 0) + 1;
+    }
+    const api = {
+      unlock(){ ac(); },
+      ready(){ return !!ctx && ctx.state === "running"; },
+      get on(){ return on; }, get vol(){ return vol; },
+      toggle(){ on = !on; LS.set("dq_sfx", on ? "1" : "0"); if (on) { ac(); setTimeout(api.join, 60); } return on; },
+      cycleVol(){ vol = vol >= 3 ? 1 : vol + 1; LS.set("dq_vol", String(vol)); ac(); api.join(); return vol; },
+      // 有人報到：清脆「叮咚」
+      join(){ tone(880, 0, 0.12, "sine", 0.22); tone(1320, 0.08, 0.18, "sine", 0.2); },
+      // 開始作答：上行四音號角
+      start(){ [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.1, i === 3 ? 0.5 : 0.22, "triangle", 0.32)); tone(131, 0, 0.6, "sine", 0.3); },
+      // 倒數節奏：每秒「滴答」交替（低音鼓＋清脆滴答）
+      beat(n){ const hi = n % 2 === 0; tone(hi ? 1000 : 760, 0, 0.05, "square", 0.07); tone(hi ? 110 : 82, 0, 0.16, "sine", 0.32, 50); },
+      // 最後 5 秒：急促高音嗶（每半秒一次）
+      hurry(final){ tone(final ? 1568 : 1319, 0, 0.09, "square", 0.13); tone(98, 0, 0.12, "sine", 0.3, 55); },
+      // 時間到：低沉蜂鳴
+      buzzer(){ tone(196, 0, 0.7, "sawtooth", 0.2, 98); tone(147, 0, 0.7, "sawtooth", 0.16, 73); },
+      // 揭曉：明亮和弦
+      reveal(at){ [784, 988, 1175, 1568].forEach((f, i) => tone(f, (at || 0) + i * 0.09, 0.7, "sine", 0.2)); },
+      // 測驗結束：勝利號角
+      finish(){ [[523,0],[523,.15],[523,.3],[659,.45],[784,.75],[659,.95],[784,1.1]].forEach(([f, t], i) => tone(f, t, i === 6 ? 0.9 : 0.2, "triangle", 0.3)); tone(131, 1.1, 0.9, "sine", 0.3); }
+    };
+    return api;
+  })();
+  let sfxPrev = null, sfxBeat = null, sfxJoinAt = 0;
+  // 依狀態變化觸發音效（第一次讀到狀態時不發聲）
+  function sfxOnState(){
+    if (!S) return;
+    const cur = { status: S.status, q: S.q, round: S.round, total: S.total };
+    const p = sfxPrev; sfxPrev = cur;
+    if (!p) return;
+    if (cur.round !== p.round) return;
+    if (cur.status === "active" && (p.status !== "active" || p.q !== cur.q)) { SFX.start(); sfxBeat = null; }
+    else if (cur.status === "revealed" && p.status === "active") { SFX.buzzer(); SFX.reveal(0.75); }
+    else if (cur.status === "finished" && p.status !== "finished") SFX.finish();
+    if (cur.total > p.total && cur.status === "waiting" && Date.now() - sfxJoinAt > 180) { sfxJoinAt = Date.now(); SFX.join(); }
+  }
+  // 倒數節奏：前段每秒一拍，最後 5 秒每半秒一拍
+  function sfxTick(){
+    if (!S || S.status !== "active") { sfxBeat = null; return; }
+    const r = remain(S); if (r <= 0) return;
+    const key = r > 5 ? "s" + Math.ceil(r) : "h" + Math.ceil(r * 2);
+    if (key === sfxBeat) return;
+    const first = sfxBeat === null; sfxBeat = key;
+    if (first && Date.now() - (S._t || 0) < 400) return;   // 剛開題時讓號角先響完
+    if (r > 5) SFX.beat(Math.ceil(r)); else SFX.hurry(r <= 1);
+  }
+  function sfxBtn(){
+    const lab = !SFX.on ? "🔇 音效：關" : (!SFX.ready() ? "🔈 點一下啟用音效" : "🔊 音效：開");
+    return `<button type="button" class="cbtn ghost" data-a="sfx">${lab}</button>` + (SFX.on ? `<button type="button" class="cbtn ghost" data-a="vol">音量 ${"▮".repeat(SFX.vol)}${"▯".repeat(3 - SFX.vol)}</button>` : "");
+  }
+
   /* ---------- 共用：下載已填好連線的檔案、複製 SQL ---------- */
   function configuredHTML(){
     const c = cfg();
@@ -723,7 +795,7 @@ function hostInit(){
     if (tab !== "ctrl") return;
     if (!document.getElementById("hBody")) shell();
     if (!S || !CFG) return;
-    const key = [S.status, S.q, S.total, S.answered, JSON.stringify(S.units), JSON.stringify(S.counts), JSON.stringify(S.summary), busy, remain(S) > 0].join("~");
+    const key = [S.status, S.q, S.total, S.answered, JSON.stringify(S.units), JSON.stringify(S.counts), JSON.stringify(S.summary), busy, remain(S) > 0, SFX.on, SFX.vol, SFX.ready()].join("~");
     if (!force && key === lastKey) { tick(); return; }
     lastKey = key;
     const Q = CFG.questions || [], NQ = Q.length;
@@ -753,6 +825,7 @@ function hostInit(){
     else if (S.status === "revealed") main = S.q < NQ ? `<button type="button" class="cbtn" data-a="start" data-q="${S.q + 1}" ${d}>⏭ 下一題（第 ${S.q + 1} 題）</button>` : `<button type="button" class="cbtn go" data-a="finish" ${d}>🏁 結束測驗</button>`;
     document.getElementById("hBody").innerHTML = `<div class="hwrap">${side}<div class="stage">${stage}</div></div>
       <div class="ctrl">${main}<span class="sp"></span>
+      ${sfxBtn()}
       <button type="button" class="cbtn ghost" data-a="reset" ${d}>🔄 重置整場（開新梯次）</button>
       <button type="button" class="cbtn ghost" data-a="logout">登出</button></div>`;
     tick();
@@ -768,17 +841,12 @@ function hostInit(){
   }
   function summaryHTML(Q){
     const pr = CFG.passRate == null ? 0.6 : CFG.passRate;
-    let sumRight = 0, sumTotal = 0;
     const rows = Q.map((it, i) => {
       const r = (S.summary || []).find(x => x.q === i + 1) || { t:0, f:0 };
       const total = Math.max(S.total, r.t + r.f), right = it.answer ? r.t : r.f, rate = total ? right / total : 0;
-      sumRight += right; sumTotal += total;
       return `<tr><td>第 ${i + 1} 題</td><td>${esc(it.text)}</td><td class="r">${it.answer ? "⭕ 是" : "❌ 否"}</td><td class="r${rate < pr ? " bad" : ""}">${Math.round(rate * 100)}%</td></tr>`;
     }).join("");
-    const avgRate = sumTotal ? Math.round(sumRight / sumTotal * 100) : 0;
-    const avgBad = sumTotal && (sumRight / sumTotal < pr);
-    const avgBanner = `<div class="acc${avgBad ? " bad" : ""}" style="text-align:center;font-size:26px">全場總平均答對率：<b>${avgRate}%</b>（總答對 ${sumRight} 人次／應作答 ${sumTotal} 人次）</div>`;
-    return `${avgBanner}<div class="panel"><table class="sum"><thead><tr><th style="width:5.5em">題號</th><th>題目</th><th style="width:5em">正解</th><th style="width:5em">答對率</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<div class="panel"><table class="sum"><thead><tr><th style="width:5.5em">題號</th><th>題目</th><th style="width:5em">正解</th><th style="width:5em">答對率</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
   function tick(){
     if (tab !== "ctrl" || !S || S.status !== "active") return;
@@ -790,7 +858,7 @@ function hostInit(){
   }
   async function act(action, q){
     if (busy) return; busy = true; render(true);
-    try { await hostCall(action, q); S = await poll(""); ok = true; }
+    try { await hostCall(action, q); S = await poll(""); S._t = Date.now(); ok = true; sfxOnState(); }
     catch(e) { if (e.message === "bad_pin") { busy = false; return; } ok = false; }
     busy = false; lastKey = ""; render(true);
   }
@@ -854,6 +922,9 @@ function hostInit(){
   /* ---------- 事件 ---------- */
   app.addEventListener("click", async e => {
     const b = e.target.closest("button"); if (!b) return;
+    const sfxWasReady = SFX.ready(); SFX.unlock();
+    if (b.dataset.a === "sfx") { if (SFX.on && !sfxWasReady) { SFX.unlock(); setTimeout(() => { SFX.join(); lastKey = ""; render(true); }, 80); return; } SFX.toggle(); lastKey = ""; render(true); return; }
+    if (b.dataset.a === "vol") { SFX.cycleVol(); lastKey = ""; render(true); return; }
     // 精靈
     if (b.id === "wCopy") { copyText(sqlText(), "已複製 SQL，請到 Supabase 的 SQL Editor 貼上執行"); if (wizStep < 3) { wizStep = 3; } return; }
     if (b.id === "wTest") { wizardTest(); return; }
@@ -924,18 +995,21 @@ function hostInit(){
     if (running) return; running = true;
     while (pin) {
       if (!busy) {
-        try { S = await poll(""); ok = true; if (!CFG) await loadCfg(); } catch(e) { ok = false; }
-        render();
+        try { S = await poll(""); S._t = Date.now(); ok = true; if (!CFG) await loadCfg(); } catch(e) { ok = false; }
+        sfxOnState(); render();
       }
       await new Promise(z => setTimeout(z, 1000));
     }
     running = false;
   }
   setInterval(tick, 200);
+  setInterval(sfxTick, 100);
   if (!hasCfg()) wizardView();
   else if (pin) { shell(); loop(); }
   else loginView();
 }
 
 if (IS_HOST) hostInit(); else studentInit();
-</script></body></html>
+</script>
+</body>
+</html>
