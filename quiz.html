@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B365D">
+<title>毒駕查處隨堂測驗</title>
+<style>
+/* 學員端：手機一題一畫面；教官端（網址加 ?host）：投影大螢幕控場看板 */
+:root{
+  --bg:#EDF0F5; --surface:#FFFFFF; --surface2:#F4F6FA; --line:#D2D9E3;
+  --ink:#14213A; --muted:#5B6678;
+  --navy:#1B365D; --navy-2:#24467A; --gold:#F5B841;
+  --accent:#1B4F9C; --accent-soft:#E2EBF8;
+  --red:#BF2E20; --red-soft:#FBE8E5;
+  --amber:#9A5A00; --amber-soft:#FFF1D8;
+  --green:#16704A; --green-soft:#E0F3E9;
+  --sans:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.55;min-height:100vh}
+button{font:inherit;color:inherit;cursor:pointer}
+input{font:inherit}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+
+.top{position:sticky;top:0;z-index:5;background:var(--navy);color:#fff;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px}
+.top-in{max-width:640px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.top small{display:block;font-size:11px;color:var(--gold);font-weight:700;letter-spacing:.04em}
+.top h1{margin:0;font-size:17px;font-weight:900;line-height:1.25}
+.unit-pill{flex:none;background:var(--navy-2);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:3px 11px;font-size:13px;font-weight:800;white-space:nowrap;max-width:45vw;overflow:hidden;text-overflow:ellipsis}
+main{max-width:640px;margin:0 auto;padding:16px 16px calc(28px + env(safe-area-inset-bottom,0px))}
+
+.net{display:none;background:var(--red);color:#fff;text-align:center;font-weight:800;font-size:13.5px;padding:6px 10px}
+.net.on{display:block}
+
+.card{background:var(--surface);border:1.5px solid var(--line);border-radius:16px;padding:18px 16px}
+.center{text-align:center}
+.big-ic{font-size:52px;line-height:1.1;margin:4px 0 6px}
+.h{margin:0 0 6px;font-size:21px;font-weight:900;line-height:1.35}
+.sub{margin:0;color:var(--muted);font-size:15px}
+.count{display:inline-block;margin-top:12px;background:var(--accent-soft);color:var(--accent);font-weight:900;border-radius:999px;padding:4px 14px;font-size:15.5px}
+.dots::after{content:"…";animation:dots 1.4s steps(4,end) infinite;display:inline-block;width:1.2em;text-align:left;overflow:hidden;vertical-align:bottom}
+@keyframes dots{0%{width:0}100%{width:1.2em}}
+
+/* 報到 */
+.lbl{font-weight:900;font-size:17px;margin:0 0 4px}
+.hint{margin:0 0 12px;color:var(--muted);font-size:14px}
+.units{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ubtn{border:2px solid var(--line);background:var(--surface);border-radius:12px;padding:13px 8px;font-weight:800;font-size:16px}
+.ubtn.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.other{margin-top:10px;display:flex;gap:8px;align-items:center}
+.other input{flex:1;min-width:0;border:2px solid var(--line);border-radius:12px;padding:11px 12px;font-size:16px;background:var(--surface);color:var(--ink)}
+.other input.on{border-color:var(--accent)}
+.primary{width:100%;margin-top:16px;border:0;border-radius:14px;background:var(--green);color:#fff;font-weight:900;font-size:18px;padding:15px}
+.primary:disabled{opacity:.38;cursor:not-allowed}
+.note{margin-top:12px;font-size:13px;color:var(--muted);text-align:center}
+
+/* 作答 */
+.qmeta{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:900;color:var(--muted);font-size:14.5px}
+.timer{font-variant-numeric:tabular-nums;font-weight:900;font-size:30px;color:var(--accent);line-height:1}
+.timer.low{color:var(--red)}
+.tbar{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-bottom:14px}
+.tbar i{display:block;height:100%;background:var(--accent);transition:width .2s linear}
+.tbar.low i{background:var(--red)}
+.qtext{font-size:19px;font-weight:800;line-height:1.55;margin:0 0 18px}
+.ans{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.abtn{border:3px solid var(--line);background:var(--surface);border-radius:18px;padding:22px 6px;font-size:26px;font-weight:900;line-height:1.2}
+.abtn span{display:block;font-size:44px;margin-bottom:4px}
+.abtn.t{border-color:#2E7D5B;color:var(--green)}
+.abtn.f{border-color:#C0392B;color:var(--red)}
+.abtn:disabled{opacity:.35;cursor:default}
+.abtn.pick{opacity:1;color:#fff}
+.abtn.t.pick{background:var(--green);border-color:var(--green)}
+.abtn.f.pick{background:var(--red);border-color:var(--red)}
+.locked{margin-top:14px;text-align:center;font-weight:800;font-size:15.5px;border-radius:12px;padding:10px;background:var(--surface2);border:1.5px solid var(--line)}
+.locked.warn{background:var(--amber-soft);border-color:var(--amber);color:var(--amber)}
+.mine{display:inline-block;margin-top:12px;font-weight:900;font-size:18px;border-radius:12px;padding:8px 16px;background:var(--surface2);border:1.5px solid var(--line)}
+.foot{margin-top:18px;text-align:center;font-size:12.5px;color:var(--muted)}
+.foot button{border:0;background:none;color:var(--muted);text-decoration:underline;font-size:12.5px;padding:4px 6px}
+
+/* ================= 教官端 ================= */
+body.host{background:#0D1626;color:#E6EBF3;font-size:18px}
+body.host .top{padding:12px 24px}
+body.host .top-in{max-width:none}
+body.host .top h1{font-size:22px}
+.hwrap{padding:18px 24px 120px;max-width:1500px;margin:0 auto;display:grid;grid-template-columns:minmax(260px,1fr) 3fr;gap:18px}
+@media (max-width:900px){.hwrap{grid-template-columns:1fr;padding:14px 14px 140px}}
+.panel{background:#162238;border:1.5px solid #2A3A57;border-radius:18px;padding:18px}
+.panel h3{margin:0 0 10px;font-size:17px;color:#9FB3D6;font-weight:900;letter-spacing:.03em}
+.total{font-size:clamp(48px,6vw,84px);font-weight:900;line-height:1;color:#fff;font-variant-numeric:tabular-nums}
+.total small{font-size:.32em;color:#9FB3D6;font-weight:800;margin-left:6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chip{background:#20314F;border:1px solid #34507E;border-radius:10px;padding:6px 12px;font-weight:800;font-size:17px}
+.chip b{color:var(--gold);margin-left:6px;font-size:19px}
+.empty{color:#7F90AD;font-size:15px}
+.stage{display:flex;flex-direction:column;gap:16px;min-height:60vh}
+.status{display:inline-block;border-radius:999px;padding:4px 14px;font-weight:900;font-size:15px;background:#2A3A57;color:#fff}
+.status.active{background:var(--accent)} .status.revealed{background:#B26A00} .status.finished{background:var(--green)}
+.hq-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.hq-n{font-size:22px;font-weight:900;color:var(--gold)}
+.hq-text{font-size:clamp(26px,2.6vw,40px);font-weight:900;line-height:1.5;color:#fff;margin:0}
+.htimer{font-size:clamp(70px,9vw,140px);font-weight:900;line-height:1;font-variant-numeric:tabular-nums;color:#86ADF0;text-align:center}
+.htimer.low{color:#FF7D6E}
+.hbar{height:16px;background:#2A3A57;border-radius:10px;overflow:hidden}
+.hbar i{display:block;height:100%;background:#86ADF0;transition:width .2s linear}
+.hbar.low i{background:#FF7D6E}
+.answered{font-size:24px;font-weight:900;text-align:center;color:#C9D6EE}
+.answered b{color:#fff;font-size:34px}
+.bars{display:flex;flex-direction:column;gap:14px}
+.brow{display:grid;grid-template-columns:9.6em 1fr 6.6em;gap:.6em;align-items:center;font-size:clamp(19px,1.9vw,28px)}
+.brow .bl{font-weight:900;white-space:nowrap}
+.brow .bt{height:clamp(38px,4.2vw,58px);background:#20314F;border-radius:12px;overflow:hidden;position:relative}
+.brow .bt i{display:block;height:100%;border-radius:12px;transition:width .5s ease}
+.brow .bv{font-weight:900;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.brow.t i{background:#2FA36B} .brow.f i{background:#D9473A} .brow.x i{background:#6B7A94}
+.brow.right .bl::after{content:"✔正解";font-size:.62em;background:var(--gold);color:#1A1306;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:4px}
+.acc{border-radius:14px;padding:14px 18px;font-size:22px;font-weight:900;border:3px solid #2FA36B;background:rgba(47,163,107,.12)}
+.acc.bad{border-color:#FF5A4A;background:rgba(255,90,74,.14);color:#FFB3AA}
+.comment{border-radius:14px;padding:16px 20px;background:#FFF1D8;color:#3B2600;font-size:clamp(22px,2.2vw,32px);font-weight:900;line-height:1.5}
+.qrbox{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+.qrbox img{width:clamp(180px,20vw,280px);height:auto;background:#fff;border-radius:14px;padding:10px}
+.qrbox .url{font-size:18px;word-break:break-all;color:#C9D6EE}
+.qrbox .big{font-size:clamp(28px,3vw,44px);font-weight:900;color:#fff;line-height:1.3;margin:0 0 8px}
+.done-h{font-size:clamp(34px,4vw,56px);font-weight:900;color:#62D39C;text-align:center;margin:10px 0}
+table.sum{width:100%;border-collapse:collapse;font-size:19px}
+table.sum th{color:#9FB3D6;text-align:left;font-weight:800;padding:8px;border-bottom:2px solid #2A3A57}
+table.sum td{padding:10px 8px;border-top:1px solid #2A3A57;vertical-align:top}
+table.sum td.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:800}
+table.sum td.bad{color:#FF7D6E}
+.ctrl{position:fixed;left:0;right:0;bottom:0;background:#0A101A;border-top:1px solid #2A3A57;padding:12px 24px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:12px;align-items:center;flex-wrap:wrap;z-index:6}
+.cbtn{border:0;border-radius:14px;padding:14px 26px;font-weight:900;font-size:20px;color:#fff;background:var(--accent)}
+.cbtn.go{background:#1E8A57} .cbtn.stop{background:#C0392B} .cbtn.next{background:#1B4F9C}
+.cbtn:disabled{opacity:.4;cursor:wait}
+.cbtn.ghost{background:transparent;border:1.5px solid #3D4F70;color:#C9D6EE;font-size:15px;padding:10px 14px}
+.cbtn.ghost.armed{background:#C0392B;border-color:#C0392B;color:#fff}
+.ctrl .sp{flex:1}
+.msg{font-size:15px;color:var(--gold);font-weight:800}
+.login{max-width:440px;margin:40px auto;padding:0 16px}
+.login .panel input{width:100%;border:2px solid #34507E;background:#0D1626;color:#fff;border-radius:12px;padding:12px;font-size:20px;letter-spacing:.2em;text-align:center;margin:8px 0 12px}
+.login .err{color:#FF7D6E;font-weight:800;min-height:1.5em;font-size:15px}
+details.set{margin-top:14px;font-size:14.5px}
+details.set summary{cursor:pointer;color:#9FB3D6;font-weight:800}
+details.set label{display:block;margin-top:10px;color:#9FB3D6;font-weight:700}
+details.set input{width:100%;border:1.5px solid #34507E;background:#0D1626;color:#fff;border-radius:10px;padding:9px;font-size:14px;letter-spacing:0;text-align:left;margin:4px 0 0}
+details.set .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+details.set button{border:1.5px solid #34507E;background:#20314F;color:#fff;border-radius:10px;padding:8px 12px;font-weight:800;font-size:14px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#62D39C;margin-right:6px;vertical-align:1px}
+.dot.off{background:#FF5A4A}
+</style>
+</head>
+<body>
+<div class="net" id="net">連線中斷，重新連線中…（請確認手機網路）</div>
+<header class="top"><div class="top-in">
+  <div><small>花蓮港務警察總隊｜毒駕查處講習</small><h1 id="ttl">隨堂測驗</h1></div>
+  <div id="topRight"></div>
+</div></header>
+<div id="app"></div>
+
+<script>
+/* ===================================================================
+   設定區：上課前只要改這裡
+   =================================================================== */
+
+  // Supabase 連線（Supabase 專案 → Project Settings → API；學員手機讀的是這裡，務必填好再上傳）
+  supabaseUrl: "https://tnnrozwazgzleqnddicl.supabase.co",          // 例：https://abcdefghijk.supabase.co
+  supabaseAnonKey: "sb_secret_0XbKSkZFaACSsFk8nDk1Dg_VadTtE88",      // 例：sb_publishable_xxxx 或 eyJhbGciOi...（anon public key）
+
+  // 學員報到連結（教官看板等待畫面會依此產生 QR Code；留空則自動使用目前網址）
+  joinUrl: "",
+
+  // 報到快捷單位按鈕（可自行增減）；清單外的單位，學員可點「其他單位」手動輸入
+  units: ["保安隊", "東堤中隊", "和平隊", "刑警隊"],
+
+  // 題庫：answer true = ⭕ 是、false = ❌ 否；comment 僅在教官大螢幕揭曉時顯示，學員手機不顯示
+  questions: [
+    { text: "10/31 新制上路後，汽機車毒駕「拒測」首犯罰 27 萬元，且不論車主是誰，車子一律移置保管送監理站沒入。",
+      answer: true,
+      comment: "正解【⭕ 是】：新制拒測首犯 27 萬，依第 35 條第 9 項不論車主為誰一律扣車送監理站沒入。" },
+    { text: "處理單純交通事故，就可以直接要求快篩並拖吊移置車輛。",
+      answer: false,
+      comment: "正解【❌ 否】：嚴禁無差別普篩！須具備觀測表【壹】或【貳】客觀異常之一才能啟動唾篩。" },
+    { text: "駕駛人現場「拒絕唾液快篩」且「拒絕自願採尿」，可以直接用「拒測／拒採尿」當理由上銬逮捕。",
+      answer: false,
+      comment: "正解【❌ 否】：拒測或拒採尿本身不是逮捕理由，須具「不能安全駕駛客觀情狀」始得依刑訴第 88 條逮捕。" },
+    { text: "唾液快篩失敗達 2 次（無 C 線）時，視同拒測，應當場開立 27 萬元拒測紅單並扣車。",
+      answer: false,
+      comment: "正解【❌ 否】：失敗 2 次不等於拒測，現場暫不開單扣車，應先詢問是否願意配合「自願採尿」。" },
+    { text: "員警攔查車輛時，發現車內有毒品，且駕駛人無行車異常及精神狀況均正常情況下，得直接實施唾液快篩？",
+      answer: false,
+      comment: "正解【❌ 否】：【壹】與【貳】皆無異常時嚴禁毒駕普篩；毒品另依毒品案偵辦，觀測表仍須照實填寫記錄狀態。" }
+  ],
+
+  passRate: 0.6   // 答對率低於此值，大螢幕亮紅框警戒
+};
+
+/* =================== 以下為程式，一般不需修改 =================== */
+const IS_HOST = new URLSearchParams(location.search).has("host");
+const LS = {
+  get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem(k, v); } catch(e){} },
+  del(k){ try { localStorage.removeItem(k); } catch(e){} }
+};
+const SS = {
+  get(k){ try { return sessionStorage.getItem(k); } catch(e){ return null; } },
+  set(k,v){ try { sessionStorage.setItem(k, v); } catch(e){} },
+  del(k){ try { sessionStorage.removeItem(k); } catch(e){} }
+};
+const app = document.getElementById("app");
+const Q = QUIZ_CONFIG.questions, NQ = Q.length;
+function esc(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ---------- 連線設定：檔案內設定 → 本機儲存 → 網址 #cfg= ---------- */
+(function(){
+  const m = location.hash.match(/cfg=([^&]+)/);
+  if (m) { try { const c = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]))))); if (c.u && c.k) { LS.set("dq_url", c.u); LS.set("dq_key", c.k); } } catch(e){} }
+})();
+function cfg(){
+  return { url: (QUIZ_CONFIG.supabaseUrl || LS.get("dq_url") || "").trim().replace(/\/+$/,""),
+           key: (QUIZ_CONFIG.supabaseAnonKey || LS.get("dq_key") || "").trim() };
+}
+function hasCfg(){ const c = cfg(); return /^https?:\/\//.test(c.url) && c.key.length > 10; }
+
+/* ---------- 呼叫 Supabase 函式（原生 fetch，不載入外部套件） ---------- */
+let offset = 0, bestRtt = Infinity;   // 伺服器時間 − 手機時間（毫秒）
+async function rpc(name, args, timeoutMs){
+  const c = cfg();
+  const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), timeoutMs || 6000);
+  try {
+    const res = await fetch(`${c.url}/rest/v1/rpc/${name}`, {
+      method:"POST", signal: ctl.signal, cache:"no-store",
+      headers:{ "Content-Type":"application/json", "apikey": c.key, "Authorization": "Bearer " + c.key },
+      body: JSON.stringify(args || {})
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return await res.json();
+  } finally { clearTimeout(tm); }
+}
+async function poll(device){
+  const t0 = Date.now();
+  const s = await rpc("quiz_poll", { p_device: device || "" });
+  const t1 = Date.now(), rtt = t1 - t0;
+  // 以伺服器時間校正手機時鐘：取延遲最小的一次（越準），之後逐步更新
+  const est = s.now - (t0 + rtt / 2);
+  if (rtt <= bestRtt * 1.5 || Math.abs(est - offset) > 2000) { offset = est; bestRtt = Math.min(bestRtt, rtt); }
+  return s;
+}
+function serverNow(){ return Date.now() + offset; }
+function remain(s){ return s && s.deadline ? Math.max(0, (s.deadline - serverNow()) / 1000) : 0; }
+function setNet(ok){ document.getElementById("net").classList.toggle("on", !ok); }
+
+/* ===================================================================
+   學員端
+   =================================================================== */
+function studentInit(){
+  let device = LS.get("dq_device");
+  if (!device) { device = "d" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); LS.set("dq_device", device); }
+  let S = null, pick = null, other = false, pending = {}, sendErr = {}, joining = false, changeUnit = false, lastKey = "";
+  const unitsHTML = () => QUIZ_CONFIG.units.map(u => `<button type="button" class="ubtn${!other && pick === u ? " on" : ""}" data-unit="${esc(u)}">${esc(u)}</button>`).join("") +
+    `<button type="button" class="ubtn${other ? " on" : ""}" data-unit="__other">其他單位</button>`;
+
+  function render(force){
+    const pill = document.getElementById("topRight");
+    if (!hasCfg()) {
+      pill.innerHTML = "";
+      app.innerHTML = `<main><div class="card center"><div class="big-ic">⚙️</div><p class="h">測驗尚未設定連線</p><p class="sub">請教官在 quiz.html 的 QUIZ_CONFIG 填入 Supabase 連線資料。</p></div></main>`;
+      return;
+    }
+    if (!S) { app.innerHTML = `<main><div class="card center"><p class="h">連線中<span class="dots"></span></p></div></main>`; return; }
+    const joined = !!S.me_unit && !changeUnit;
+    pill.innerHTML = joined ? `<span class="unit-pill">【${esc(S.me_unit)}】</span>` : "";
+
+    // 只有畫面結構改變時才重畫（避免輸入中被打斷），倒數另外更新
+    const key = [joined, S.status, S.q, S.me_ans, pending[S.q], sendErr[S.q], S.total, joined ? "" : (pick + "|" + other), remain(S) > 0].join("~");
+    if (!force && key === lastKey) { tick(); return; }
+    lastKey = key;
+
+    if (!joined) {
+      const val = other ? (document.getElementById("otherIn") || {}).value || pick || "" : "";
+      app.innerHTML = `<main><div class="card">
+        <p class="lbl">請選擇您的所屬單位</p>
+        <p class="hint">只填單位、不填姓名，作答不會顯示個人資料。</p>
+        <div class="units" id="units">${unitsHTML()}</div>
+        <div class="other" ${other ? "" : "hidden"}><input type="text" id="otherIn" maxlength="20" placeholder="請輸入單位名稱" value="${esc(val)}" class="on" autocomplete="off"></div>
+        <button type="button" class="primary" id="joinBtn" ${canJoin() ? "" : "disabled"}>${joining ? "報到中…" : "✅ 報到進場"}</button>
+        <p class="note">目前全場已進場 ${S.total} 人</p>
+      </div>${footHTML()}</main>`;
+      if (other) { const inp = document.getElementById("otherIn"); if (document.activeElement !== inp && !val) inp.focus(); }
+      return;
+    }
+
+    const q = S.q, item = Q[q - 1] || { text:"（題庫未設定此題）" };
+    const mine = S.me_ans || pending[q] || null;
+    const mineTxt = mine === "T" ? "⭕ 是" : mine === "F" ? "❌ 否" : "未作答";
+
+    if (S.status === "waiting") {
+      app.innerHTML = `<main><div class="card center"><div class="big-ic">✅</div>
+        <p class="h">【${esc(S.me_unit)}】報到成功！</p>
+        <p class="sub">等待教官開啟第 1 題<span class="dots"></span></p>
+        <span class="count">目前全場已進場 ${S.total} 人</span></div>${footHTML(true)}</main>`;
+    } else if (S.status === "active") {
+      const over = remain(S) <= 0;
+      let lock = "";
+      if (mine && sendErr[q] === "closed") lock = `<div class="locked warn">送出時已截止，本題未計入</div>`;
+      else if (mine) lock = `<div class="locked">已送出：${mineTxt}，等待其他同仁作答…</div>`;
+      else if (over) lock = `<div class="locked warn">⏰ 時間到，本題未作答</div>`;
+      else if (sendErr[q] === "net") lock = `<div class="locked warn">網路不穩，送出失敗，請再點一次</div>`;
+      const dis = mine || over ? "disabled" : "";
+      app.innerHTML = `<main><div class="card">
+        <div class="qmeta"><span>第 ${q} 題／共 ${NQ} 題</span><span class="timer" id="tm">--</span></div>
+        <div class="tbar" id="tb"><i id="tbi" style="width:100%"></i></div>
+        <p class="qtext">${esc(item.text)}</p>
+        <div class="ans">
+          <button type="button" class="abtn t${mine === "T" ? " pick" : ""}" data-ans="T" ${dis}><span>⭕</span>是</button>
+          <button type="button" class="abtn f${mine === "F" ? " pick" : ""}" data-ans="F" ${dis}><span>❌</span>否</button>
+        </div>${lock}</div></main>`;
+      tick();
+    } else if (S.status === "revealed") {
+      app.innerHTML = `<main><div class="card center"><div class="big-ic">🔒</div>
+        <p class="h">第 ${q} 題作答已結束</p><p class="sub">請聽教官簡短提示</p>
+        <span class="mine">你的作答：${sendErr[q] === "closed" ? "未作答（逾時）" : mineTxt}</span></div></main>`;
+    } else {
+      app.innerHTML = `<main><div class="card center"><div class="big-ic">🎓</div>
+        <p class="h">✅ 隨堂測驗結束，正式課程開始！</p><p class="sub">感謝【${esc(S.me_unit)}】的參與。</p></div></main>`;
+    }
+  }
+  function footHTML(canChange){
+    return `<div class="foot">${canChange ? `<button type="button" data-act="change">更換單位</button>・` : ""}<button type="button" data-act="host">教官控場</button></div>`;
+  }
+  function canJoin(){
+    if (joining) return false;
+    if (other) { const inp = document.getElementById("otherIn"); const v = inp ? inp.value.trim() : (pick || ""); return v.length > 0; }
+    return !!pick;
+  }
+  function tick(){
+    if (!S || S.status !== "active") return;
+    const r = remain(S), tm = document.getElementById("tm"), tbi = document.getElementById("tbi"), tb = document.getElementById("tb");
+    if (tm) { tm.textContent = Math.ceil(r); tm.classList.toggle("low", r <= 5); }
+    if (tbi) tbi.style.width = (r / (S.seconds || 20) * 100) + "%";
+    if (tb) tb.classList.toggle("low", r <= 5);
+    // 倒數歸零時立即鎖定按鈕
+    if (r <= 0 && !(S.me_ans || pending[S.q]) && document.querySelector(".abtn:not([disabled])")) render(true);
+  }
+
+  async function doJoin(){
+    const unit = other ? document.getElementById("otherIn").value.trim() : pick;
+    if (!unit) return;
+    joining = true; render(true);
+    try {
+      const r = await rpc("quiz_join", { p_device: device, p_unit: unit });
+      if (r.ok) { LS.set("dq_unit", unit); pick = unit; changeUnit = false; S = await poll(device); setNet(true); }
+      else alert("報到失敗：單位名稱請在 20 字以內。");
+    } catch(e) { setNet(false); alert("網路連線失敗，請確認手機網路後再按一次。"); }
+    joining = false; render(true);
+  }
+  async function doAnswer(ans){
+    const q = S.q;
+    if (S.me_ans || pending[q] || remain(S) <= 0) return;
+    pending[q] = ans; delete sendErr[q]; render(true);
+    for (let i = 0; i < 3; i++) {
+      try {
+        const r = await rpc("quiz_answer", { p_device: device, p_q: q, p_ans: ans }, 4000);
+        if (r.ok) { pending[q] = r.ans; if (S.q === q) S.me_ans = r.ans; setNet(true); render(true); return; }
+        sendErr[q] = r.err === "not_joined" ? "net" : "closed";
+        if (r.err === "not_joined") { delete pending[q]; S.me_unit = null; }
+        render(true); return;
+      } catch(e) { setNet(false); await new Promise(z => setTimeout(z, 500)); }
+    }
+    delete pending[q]; sendErr[q] = "net"; render(true);
+  }
+
+  app.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.unit) {
+      if (b.dataset.unit === "__other") { other = true; pick = LS.get("dq_unit") && !QUIZ_CONFIG.units.includes(LS.get("dq_unit")) ? LS.get("dq_unit") : ""; }
+      else { other = false; pick = b.dataset.unit; }
+      render(true); return;
+    }
+    if (b.id === "joinBtn") { doJoin(); return; }
+    if (b.dataset.ans) { doAnswer(b.dataset.ans); return; }
+    if (b.dataset.act === "change") { changeUnit = true; pick = S.me_unit; other = !QUIZ_CONFIG.units.includes(pick); render(true); return; }
+    if (b.dataset.act === "host") { location.href = location.pathname + "?host"; }
+  });
+  app.addEventListener("input", e => { if (e.target.id === "otherIn") { const jb = document.getElementById("joinBtn"); if (jb) jb.disabled = !canJoin(); } });
+  app.addEventListener("keydown", e => { if (e.target.id === "otherIn" && e.key === "Enter" && canJoin()) doJoin(); });
+
+  // 預選上次的單位
+  const saved = LS.get("dq_unit");
+  if (saved) { if (QUIZ_CONFIG.units.includes(saved)) pick = saved; else { other = true; pick = saved; } }
+
+  async function loop(){
+    if (hasCfg()) {
+      try {
+        const s = await poll(device); setNet(true);
+        if (S && s.q !== S.q) { pending = {}; sendErr = {}; }
+        if (S && s.round !== S.round) { pending = {}; sendErr = {}; changeUnit = false; }
+        S = s;
+      } catch(e) { setNet(false); }
+    }
+    render();
+    setTimeout(loop, document.hidden ? 4000 : 1500);
+  }
+  setInterval(tick, 250);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) loop(); });
+  render(true); loop();
+}
+
+/* ===================================================================
+   教官端（網址加 ?host）
+   =================================================================== */
+function hostInit(){
+  document.body.classList.add("host");
+  document.getElementById("ttl").textContent = "隨堂測驗・教官控場看板";
+  let S = null, pin = SS.get("dq_pin") || "", busy = false, ok = true, lastKey = "";
+
+  function settingsHTML(){
+    const c = cfg();
+    return `<details class="set"${hasCfg() ? "" : " open"}><summary>⚙ Supabase 連線設定</summary>
+      <p style="margin:8px 0 0;color:#9FB3D6">學員手機讀的是 quiz.html 檔案裡 QUIZ_CONFIG 的設定。這裡貼上的只存在這台電腦，供上課前測試用。</p>
+      <label>Project URL<input id="sUrl" value="${esc(c.url)}" placeholder="https://xxxx.supabase.co" ${QUIZ_CONFIG.supabaseUrl ? "disabled" : ""}></label>
+      <label>anon public key（或 publishable key）<input id="sKey" value="${esc(c.key)}" placeholder="sb_publishable_… 或 eyJ…" ${QUIZ_CONFIG.supabaseAnonKey ? "disabled" : ""}></label>
+      <div class="row"><button type="button" id="sSave">儲存並測試連線</button><span class="msg" id="sMsg"></span></div></details>`;
+  }
+  function loginView(err){
+    document.getElementById("topRight").innerHTML = "";
+    app.innerHTML = `<div class="login"><div class="panel">
+      <h3>請輸入教官密碼</h3>
+      <input type="password" id="pin" inputmode="numeric" autocomplete="off" value="">
+      <div class="err" id="perr">${esc(err || "")}</div>
+      <button type="button" class="cbtn go" id="pinGo" style="width:100%">進入控場看板</button>
+      ${settingsHTML()}</div></div>`;
+    const p = document.getElementById("pin"); if (p) p.focus();
+  }
+  async function tryLogin(){
+    const v = document.getElementById("pin").value.trim();
+    if (!hasCfg()) { document.getElementById("perr").textContent = "請先展開下方「連線設定」填入 Supabase 資料。"; return; }
+    document.getElementById("perr").textContent = "驗證中…";
+    try {
+      const r = await rpc("quiz_host", { p_pin: v, p_action: "check" });
+      if (r.ok) { pin = v; SS.set("dq_pin", v); lastKey = ""; app.innerHTML = ""; loop(); }
+      else document.getElementById("perr").textContent = "密碼錯誤";
+    } catch(e) { document.getElementById("perr").textContent = "無法連線 Supabase：請檢查連線設定或網路（" + e.message + "）"; }
+  }
+
+  async function act(action, q){
+    if (busy) return; busy = true; render(true);
+    try {
+      const r = await rpc("quiz_host", { p_pin: pin, p_action: action, p_q: q == null ? null : q });
+      if (!r.ok && r.err === "bad_pin") { pin = ""; SS.del("dq_pin"); busy = false; loginView("密碼已變更，請重新輸入"); return; }
+      S = await poll(""); ok = true;
+    } catch(e) { ok = false; }
+    busy = false; lastKey = ""; render(true);
+  }
+
+  function joinLink(){
+    let u = QUIZ_CONFIG.joinUrl || (location.origin + location.pathname);
+    if (!QUIZ_CONFIG.supabaseUrl || !QUIZ_CONFIG.supabaseAnonKey) {
+      const c = cfg(); u += "#cfg=" + encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({ u:c.url, k:c.key })))));
+    }
+    return u;
+  }
+
+  function render(force){
+    if (!pin) return;
+    document.getElementById("topRight").innerHTML = `<span style="font-size:15px;font-weight:800"><span class="dot${ok ? "" : " off"}"></span>${ok ? "連線正常" : "連線中斷"}${S ? `｜第 ${S.round} 梯次` : ""}</span>`;
+    if (!S) { if (!document.getElementById("hStage")) app.innerHTML = `<div class="hwrap"><div class="panel">讀取中…</div></div>`; return; }
+    const key = [S.status, S.q, S.total, S.answered, JSON.stringify(S.units), JSON.stringify(S.counts), JSON.stringify(S.summary), busy, remain(S) > 0].join("~");
+    if (!force && key === lastKey) { tick(); return; }
+    lastKey = key;
+
+    const units = S.units.length ? `<div class="chips">${S.units.map(x => `<span class="chip">${esc(x.u)}<b>${x.n}</b></span>`).join("")}</div>` : `<p class="empty">尚無人報到</p>`;
+    const side = `<div class="panel"><h3>進場報到監控</h3><div class="total">${S.total}<small>人已進場</small></div>${units}</div>`;
+
+    const st = { waiting:"報到待機中", active:`第 ${S.q} 題作答中`, revealed:`第 ${S.q} 題已揭曉`, finished:"測驗結束" }[S.status];
+    const item = Q[S.q - 1] || { text:"", answer:true, comment:"" };
+    let stage = `<div class="hq-meta"><span class="status ${S.status}">${st}</span>${S.status === "active" || S.status === "revealed" ? `<span class="hq-n">第 ${S.q} 題／共 ${NQ} 題</span>` : ""}</div>`;
+
+    if (S.status === "waiting") {
+      const link = joinLink(), isWeb = /^https?:/.test(link);
+      stage += `<div class="panel"><div class="qrbox">${isWeb ? `<img alt="報到 QR Code" src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=0&data=${encodeURIComponent(link)}" onerror="this.remove()">` : ""}
+        <div style="flex:1;min-width:240px"><p class="big">請掃描 QR Code<br>選擇單位後報到進場</p>
+        <p class="url">${isWeb ? esc(QUIZ_CONFIG.joinUrl || (location.origin + location.pathname)) : "（目前以本機檔案開啟，請上傳網站後再產生 QR Code）"}</p></div></div></div>
+        <p class="empty" style="font-size:17px">確認各單位都已進場後，按下方「▶ 開始第 1 題」。</p>`;
+    } else if (S.status === "active") {
+      stage += `<p class="hq-text">${esc(item.text)}</p>
+        <div class="htimer" id="htm">--</div><div class="hbar" id="hb"><i id="hbi" style="width:100%"></i></div>
+        <div class="answered">已作答 <b>${S.answered}</b> ／ 已進場 ${S.total} 人</div>`;
+    } else if (S.status === "revealed") {
+      stage += `<p class="hq-text">${esc(item.text)}</p>` + barsHTML(item);
+    } else {
+      stage += `<p class="done-h">✅ 隨堂測驗結束，正式課程開始！</p>` + summaryHTML();
+    }
+
+    // 版面骨架只建立一次；連線設定區不重畫，避免輸入到一半被清掉
+    if (!document.getElementById("hStage")) {
+      app.innerHTML = `<div class="hwrap"><div id="hSide"></div><div class="stage"><div id="hStage" class="stage" style="min-height:0"></div><div id="hSet"></div></div></div><div class="ctrl" id="hCtrl"></div>`;
+      document.getElementById("hSet").innerHTML = settingsHTML();
+    }
+    document.getElementById("hSide").innerHTML = side;
+    document.getElementById("hStage").innerHTML = stage;
+    document.getElementById("hCtrl").innerHTML = ctrlHTML();
+    tick();
+  }
+  function barsHTML(item){
+    const c = S.counts || { t:0, f:0 }, total = Math.max(S.total, c.t + c.f), none = Math.max(0, total - c.t - c.f);
+    const pct = n => total ? Math.round(n / total * 100) : 0;
+    const right = item.answer ? c.t : c.f, rate = total ? right / total : 0;
+    const bad = rate < (QUIZ_CONFIG.passRate || 0.6);
+    const row = (cls, label, n, isRight) => `<div class="brow ${cls}${isRight ? " right" : ""}"><span class="bl">${label}</span><span class="bt"><i style="width:${pct(n)}%"></i></span><span class="bv">${n} 人｜${pct(n)}%</span></div>`;
+    return `<div class="bars">${row("t","⭕ 選是",c.t,item.answer)}${row("f","❌ 選否",c.f,!item.answer)}${row("x","⏰ 逾時未答",none,false)}</div>
+      <div class="acc${bad ? " bad" : ""}">答對率 ${Math.round(rate * 100)}%（答對 ${right} 人／已進場 ${total} 人）${bad ? "　⚠ 低於 " + Math.round((QUIZ_CONFIG.passRate || 0.6) * 100) + "%，觀念需加強" : ""}</div>
+      <div class="comment">${esc(item.comment)}</div>`;
+  }
+  function summaryHTML(){
+    const rows = Q.map((it, i) => {
+      const r = (S.summary || []).find(x => x.q === i + 1) || { t:0, f:0 };
+      const total = Math.max(S.total, r.t + r.f), right = it.answer ? r.t : r.f, rate = total ? right / total : 0;
+      return `<tr><td>第 ${i + 1} 題</td><td>${esc(it.text)}</td><td class="r">${it.answer ? "⭕ 是" : "❌ 否"}</td><td class="r${rate < (QUIZ_CONFIG.passRate || 0.6) ? " bad" : ""}">${Math.round(rate * 100)}%</td></tr>`;
+    }).join("");
+    return `<div class="panel"><table class="sum"><thead><tr><th style="width:5.5em">題號</th><th>題目</th><th style="width:5em">正解</th><th style="width:5em">答對率</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  function ctrlHTML(){
+    const d = busy ? "disabled" : "";
+    let main = "";
+    if (S.status === "waiting") main = `<button type="button" class="cbtn go" data-a="start" data-q="1" ${d}>▶ 開始第 1 題</button>`;
+    else if (S.status === "active") main = `<button type="button" class="cbtn stop" data-a="reveal" ${d}>⏹ 立即截止本題</button>`;
+    else if (S.status === "revealed") main = S.q < NQ
+      ? `<button type="button" class="cbtn next" data-a="start" data-q="${S.q + 1}" ${d}>⏭ 下一題（第 ${S.q + 1} 題）</button>`
+      : `<button type="button" class="cbtn go" data-a="finish" ${d}>🏁 結束測驗</button>`;
+    return main + `<span class="sp"></span><span class="msg" id="cmsg"></span>
+      <button type="button" class="cbtn ghost" data-a="reset" ${d}>🔄 重置整場（開新梯次）</button>
+      <button type="button" class="cbtn ghost" data-a="logout">登出</button>`;
+  }
+  function tick(){
+    if (!S || S.status !== "active") return;
+    const r = remain(S), tm = document.getElementById("htm"), bi = document.getElementById("hbi"), hb = document.getElementById("hb");
+    if (tm) { tm.textContent = Math.ceil(r); tm.classList.toggle("low", r <= 5); }
+    if (bi) bi.style.width = (r / (S.seconds || 20) * 100) + "%";
+    if (hb) hb.classList.toggle("low", r <= 5);
+    // 時間到：立刻請伺服器切換為揭曉（不必等下一次輪詢）
+    if (r <= 0 && !busy && !tick.sent) { tick.sent = true; act("reveal").then(() => { tick.sent = false; }); }
+  }
+
+  app.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.id === "pinGo") { tryLogin(); return; }
+    if (b.id === "sSave") {
+      const u = document.getElementById("sUrl").value.trim(), k = document.getElementById("sKey").value.trim();
+      if (!QUIZ_CONFIG.supabaseUrl) LS.set("dq_url", u);
+      if (!QUIZ_CONFIG.supabaseAnonKey) LS.set("dq_key", k);
+      const m = document.getElementById("sMsg"); m.textContent = "測試中…";
+      poll("").then(() => { m.textContent = "✅ 連線成功"; }).catch(err => { m.textContent = "❌ 連線失敗：" + err.message; });
+      return;
+    }
+    const a = b.dataset.a; if (!a) return;
+    if (a === "logout") { pin = ""; SS.del("dq_pin"); loginView(); return; }
+    if (a === "reset") {
+      if (!b.classList.contains("armed")) {
+        b.classList.add("armed"); b.textContent = "再按一次確認重置（目前梯次結束，開新梯次）";
+        setTimeout(() => { if (b.isConnected) { b.classList.remove("armed"); b.textContent = "🔄 重置整場（開新梯次）"; } }, 4000);
+        return;
+      }
+    }
+    act(a, b.dataset.q ? Number(b.dataset.q) : null);
+  });
+  app.addEventListener("keydown", e => { if (e.target.id === "pin" && e.key === "Enter") tryLogin(); });
+
+  let running = false;
+  async function loop(){
+    if (running) return; running = true;
+    while (pin) {
+      if (hasCfg() && !busy) {
+        try { S = await poll(""); ok = true; } catch(e) { ok = false; }
+        render();
+      }
+      await new Promise(z => setTimeout(z, 1000));
+    }
+    running = false;
+  }
+  setInterval(tick, 200);
+  if (pin && hasCfg()) loop(); else loginView();
+}
+
+if (IS_HOST) hostInit(); else studentInit();
+</script>
+</body>
+</html>
