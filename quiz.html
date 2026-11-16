@@ -768,12 +768,17 @@ function hostInit(){
   }
   function summaryHTML(Q){
     const pr = CFG.passRate == null ? 0.6 : CFG.passRate;
+    let sumRight = 0, sumTotal = 0;
     const rows = Q.map((it, i) => {
       const r = (S.summary || []).find(x => x.q === i + 1) || { t:0, f:0 };
       const total = Math.max(S.total, r.t + r.f), right = it.answer ? r.t : r.f, rate = total ? right / total : 0;
+      sumRight += right; sumTotal += total;
       return `<tr><td>第 ${i + 1} 題</td><td>${esc(it.text)}</td><td class="r">${it.answer ? "⭕ 是" : "❌ 否"}</td><td class="r${rate < pr ? " bad" : ""}">${Math.round(rate * 100)}%</td></tr>`;
     }).join("");
-    return `<div class="panel"><table class="sum"><thead><tr><th style="width:5.5em">題號</th><th>題目</th><th style="width:5em">正解</th><th style="width:5em">答對率</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    const avgRate = sumTotal ? Math.round(sumRight / sumTotal * 100) : 0;
+    const avgBad = sumTotal && (sumRight / sumTotal < pr);
+    const avgBanner = `<div class="acc${avgBad ? " bad" : ""}" style="text-align:center;font-size:26px">全場總平均答對率：<b>${avgRate}%</b>（總答對 ${sumRight} 人次／應作答 ${sumTotal} 人次）</div>`;
+    return `${avgBanner}<div class="panel"><table class="sum"><thead><tr><th style="width:5.5em">題號</th><th>題目</th><th style="width:5em">正解</th><th style="width:5em">答對率</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
   function tick(){
     if (tab !== "ctrl" || !S || S.status !== "active") return;
