@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="zh-TW"><script type="text/javascript" src="chrome-extension://fjnbnpbmkenffdnngjfgmeleoegfcffe/static/js/contentInt.js"></script><head>
+<html lang="zh-TW">
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1B365D">
@@ -180,6 +181,20 @@ table.sum td.bad{color:#FF7D6E}
 .login{max-width:440px;margin:40px auto;padding:0 16px}
 .login .panel input{width:100%;border:2px solid #34507E;background:#0D1626;color:#fff;border-radius:12px;padding:12px;font-size:20px;letter-spacing:.2em;text-align:center;margin:8px 0 12px}
 .login .err{color:#FF7D6E;font-weight:800;min-height:1.5em;font-size:15px}
+.acc.overall{text-align:center;font-size:clamp(22px,2.3vw,30px)}
+.qrbox .qrsvg{width:clamp(200px,22vw,300px);flex:none;background:#fff;border-radius:14px;padding:8px;line-height:0}
+.qrbox .qrsvg svg{width:100%;height:auto;display:block}
+.htab.fs{margin-left:auto}
+.keys{color:#7F90AD;font-size:14.5px;margin:0}
+.keys kbd{display:inline-block;border:1px solid #3D4F70;border-bottom-width:3px;border-radius:6px;padding:0 7px;margin:0 2px;font:inherit;font-weight:900;color:#C9D6EE;background:#162238}
+.cbtn.ghost.sm{font-size:14px;padding:9px 11px}
+.upd{max-width:1500px;margin:10px auto 0;padding:0 24px}
+.upd div{background:#2B1716;border:2px solid #FF5A4A;color:#FFC9C2;border-radius:12px;padding:10px 14px;font-weight:800;font-size:15.5px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.qsec{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.qsec input{width:110px;border:1.5px solid #34507E;background:#0D1626;color:#fff;border-radius:10px;padding:7px 10px;font-size:16px}
+.qsec small{color:#7F90AD;font-size:13.5px}
+.hist select{border:1.5px solid #34507E;background:#0D1626;color:#fff;border-radius:10px;padding:8px 10px;font-size:16px;max-width:100%}
+table.sum td.c{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:#F5B841;color:#1A1306;padding:9px 18px;border-radius:999px;font-weight:900;z-index:20;font-size:16px}
 </style>
 </head>
@@ -194,9 +209,9 @@ table.sum td.bad{color:#FF7D6E}
 <!-- 第一次設定時，教官看板會提供「複製 SQL」按鈕，內容就是這一段 -->
 <script type="text/plain" id="sqlText">
 -- =====================================================================
--- 毒駕查處隨堂測驗（第 2 版）：Supabase 資料表與函式
+-- 毒駕查處隨堂測驗（第 3 版）：完整安裝 SQL（第一次使用）
 -- 用法：Supabase 專案 → 左側「SQL Editor」→ 整段貼上 → 按「Run」
--- 可重複執行（會清除舊資料，重新建立；教官密碼會回到預設 8888）
+-- ⚠ 會清除所有題目、報到與作答紀錄，教官密碼回到預設 8888。已在使用中請改用「更新用 SQL」
 -- =====================================================================
 
 drop function if exists public.quiz_poll(text);
@@ -204,6 +219,7 @@ drop function if exists public.quiz_join(text, text);
 drop function if exists public.quiz_answer(text, int, text);
 drop function if exists public.quiz_host(text, text, int);
 drop function if exists public.quiz_host(text, text, int, jsonb);
+drop table if exists public.quiz_qlog;
 drop table if exists public.quiz_answers;
 drop table if exists public.quiz_participants;
 drop table if exists public.quiz_state;
@@ -260,14 +276,26 @@ alter table public.quiz_participants enable row level security;
 alter table public.quiz_answers      enable row level security;
 revoke all on public.quiz_state, public.quiz_participants, public.quiz_answers from anon, authenticated;
 
+-- 每題開題紀錄：開題時間、秒數、當下已報到人數（答對率分母）、題目與正解快照（歷次成績用）
+create table if not exists public.quiz_qlog (
+  round int not null, q int not null,
+  started_at timestamptz not null default now(),
+  seconds int not null, eligible int not null,
+  qtext text, answer boolean,
+  primary key (round, q)
+);
+alter table public.quiz_qlog enable row level security;
+revoke all on public.quiz_qlog from anon, authenticated;
+
 -- 輪詢（學員只拿得到目前題目的文字，拿不到正解與短評）
-create function public.quiz_poll(p_device text)
+create or replace function public.quiz_poll(p_device text)
 returns json language plpgsql security definer set search_path = public as $$
 declare s quiz_state; r json;
 begin
   update quiz_state set status = 'revealed' where id = 1 and status = 'active' and now() > deadline_at;
   select * into s from quiz_state where id = 1;
   select json_build_object(
+    'v',        3,
     'now',      floor(extract(epoch from clock_timestamp()) * 1000),
     'round',    s.round,
     'status',   s.status,
@@ -283,6 +311,7 @@ begin
     'me_unit',  (select unit from quiz_participants where round = s.round and device_id = p_device),
     'me_ans',   (select answer from quiz_answers where round = s.round and device_id = p_device and q = s.current_q),
     'answered', (select count(*) from quiz_answers where round = s.round and q = s.current_q),
+    'eligible', (select eligible from quiz_qlog where round = s.round and q = s.current_q),
     'counts',   case when s.status in ('revealed','finished') then
                   (select json_build_object('t', count(*) filter (where answer = 'T'), 'f', count(*) filter (where answer = 'F'))
                      from quiz_answers where round = s.round and q = s.current_q) end,
@@ -295,7 +324,7 @@ begin
 end $$;
 
 -- 報到
-create function public.quiz_join(p_device text, p_unit text)
+create or replace function public.quiz_join(p_device text, p_unit text)
 returns json language plpgsql security definer set search_path = public as $$
 declare rd int; u text := btrim(coalesce(p_unit, ''));
 begin
@@ -308,7 +337,7 @@ begin
 end $$;
 
 -- 作答（目前這一題、時間內、已報到，每題限一次；寬限 1.5 秒網路延遲）
-create function public.quiz_answer(p_device text, p_q int, p_ans text)
+create or replace function public.quiz_answer(p_device text, p_q int, p_ans text)
 returns json language plpgsql security definer set search_path = public as $$
 declare s quiz_state;
 begin
@@ -324,10 +353,10 @@ begin
   return json_build_object('ok', true, 'ans', (select answer from quiz_answers where round = s.round and device_id = p_device and q = p_q));
 end $$;
 
--- 教官控場（需密碼）：check／get_config／save_config／set_pin／start／reveal／finish／reset
-create function public.quiz_host(p_pin text, p_action text, p_q int default null, p_data jsonb default null)
+-- 教官控場（需密碼）：check／get_config／save_config／set_pin／start／reveal／finish／reset／history
+create or replace function public.quiz_host(p_pin text, p_action text, p_q int default null, p_data jsonb default null)
 returns json language plpgsql security definer set search_path = public as $$
-declare s quiz_state; n int; i int; qs jsonb; sec int; newpin text;
+declare s quiz_state; n int; i int; qs jsonb; sec int; newpin text; rd int; qsec jsonb;
 begin
   select * into s from quiz_state where id = 1;
   if encode(sha256(convert_to(coalesce(p_pin, ''), 'UTF8')), 'hex') <> s.host_hash then
@@ -350,6 +379,11 @@ begin
       if length(btrim(coalesce(qs->i->>'text', ''))) = 0 or jsonb_typeof(qs->i->'answer') <> 'boolean' then
         return json_build_object('ok', false, 'err', 'bad_questions', 'at', i + 1);
       end if;
+      qsec := qs->i->'seconds';
+      if qsec is not null and jsonb_typeof(qsec) <> 'null' and
+         (jsonb_typeof(qsec) <> 'number' or (qsec::text)::numeric < 5 or (qsec::text)::numeric > 180) then
+        return json_build_object('ok', false, 'err', 'bad_qseconds', 'at', i + 1);
+      end if;
     end loop;
     if jsonb_typeof(p_data->'units') <> 'array' then return json_build_object('ok', false, 'err', 'bad_units'); end if;
     sec := coalesce((p_data->>'seconds')::int, 20);
@@ -364,15 +398,232 @@ begin
     update quiz_state set host_hash = encode(sha256(convert_to(newpin, 'UTF8')), 'hex') where id = 1;
   elsif p_action = 'start' then
     if p_q is null or p_q < 1 or p_q > n then return json_build_object('ok', false, 'err', 'bad_q'); end if;
-    sec := coalesce((s.config->>'seconds')::int, 20);
+    -- 本題有設定秒數就用本題的，沒有就用預設秒數
+    sec := coalesce(nullif(s.config->'questions'->(p_q - 1)->>'seconds', '')::numeric::int, (s.config->>'seconds')::int, 20);
     update quiz_state set status = 'active', current_q = p_q, seconds = sec,
            started_at = now(), deadline_at = now() + make_interval(secs => sec) where id = 1;
+    insert into quiz_qlog (round, q, started_at, seconds, eligible, qtext, answer)
+    values (s.round, p_q, now(), sec, (select count(*) from quiz_participants where round = s.round),
+            s.config->'questions'->(p_q - 1)->>'text', (s.config->'questions'->(p_q - 1)->>'answer')::boolean)
+    on conflict (round, q) do update set started_at = excluded.started_at, seconds = excluded.seconds,
+      eligible = excluded.eligible, qtext = excluded.qtext, answer = excluded.answer;
   elsif p_action = 'reveal' then
     update quiz_state set status = 'revealed', deadline_at = least(deadline_at, now()) where id = 1 and status = 'active';
   elsif p_action = 'finish' then
     update quiz_state set status = 'finished' where id = 1;
   elsif p_action = 'reset' then
     update quiz_state set round = round + 1, status = 'waiting', current_q = 0, started_at = null, deadline_at = null where id = 1;
+  elsif p_action = 'history' then
+    -- 歷次梯次成績：p_q 指定梯次（未指定＝目前梯次）
+    rd := coalesce(p_q, s.round);
+    return json_build_object('ok', true, 'current', s.round,
+      'rounds', coalesce((select json_agg(json_build_object('round', r, 'n', np, 'first', floor(extract(epoch from t0) * 1000)) order by r desc)
+                  from (select x.r, (select count(*) from quiz_participants p where p.round = x.r) np,
+                               least((select min(joined_at) from quiz_participants p where p.round = x.r),
+                                     (select min(started_at) from quiz_qlog l where l.round = x.r)) t0
+                          from (select distinct round r from quiz_participants
+                                union select distinct round from quiz_qlog
+                                union select s.round) x) z), '[]'::json),
+      'detail', json_build_object(
+        'round', rd,
+        'total', (select count(*) from quiz_participants where round = rd),
+        'units', coalesce((select json_agg(json_build_object('u', unit, 'n', c) order by c desc, unit)
+                             from (select unit, count(*) c from quiz_participants where round = rd group by unit) u), '[]'::json),
+        'questions', coalesce((select json_agg(json_build_object(
+                      'q', k.q,
+                      'text', coalesce(l.qtext, s.config->'questions'->(k.q - 1)->>'text'),
+                      'answer', coalesce(l.answer, (s.config->'questions'->(k.q - 1)->>'answer')::boolean),
+                      'eligible', coalesce(l.eligible, (select count(*) from quiz_participants where round = rd)),
+                      't', (select count(*) from quiz_answers a where a.round = rd and a.q = k.q and a.answer = 'T'),
+                      'f', (select count(*) from quiz_answers a where a.round = rd and a.q = k.q and a.answer = 'F')) order by k.q)
+                    from (select q from quiz_qlog where round = rd union select distinct q from quiz_answers where round = rd) k
+                    left join quiz_qlog l on l.round = rd and l.q = k.q), '[]'::json)));
+  else
+    return json_build_object('ok', false, 'err', 'bad_action');
+  end if;
+  return json_build_object('ok', true);
+end $$;
+
+revoke all on function public.quiz_poll(text)                    from public;
+revoke all on function public.quiz_join(text, text)              from public;
+revoke all on function public.quiz_answer(text, int, text)       from public;
+revoke all on function public.quiz_host(text, text, int, jsonb)  from public;
+grant execute on function public.quiz_poll(text)                   to anon, authenticated;
+grant execute on function public.quiz_join(text, text)             to anon, authenticated;
+grant execute on function public.quiz_answer(text, int, text)      to anon, authenticated;
+grant execute on function public.quiz_host(text, text, int, jsonb) to anon, authenticated;
+</script>
+
+<!-- 已在使用中的資料庫，只需執行這段「更新用 SQL」（不會清除資料） -->
+<script type="text/plain" id="sqlUpdate">
+-- =====================================================================
+-- 毒駕查處隨堂測驗：更新用 SQL（第 2 版 → 第 3 版）
+-- 只新增「開題紀錄」資料表並更新函式；不會清除題目、密碼、報到與作答紀錄，可重複執行
+-- 用法：Supabase 專案 → 左側「SQL Editor」→ 整段貼上 → 按「Run」
+-- =====================================================================
+
+-- 每題開題紀錄：開題時間、秒數、當下已報到人數（答對率分母）、題目與正解快照（歷次成績用）
+create table if not exists public.quiz_qlog (
+  round int not null, q int not null,
+  started_at timestamptz not null default now(),
+  seconds int not null, eligible int not null,
+  qtext text, answer boolean,
+  primary key (round, q)
+);
+alter table public.quiz_qlog enable row level security;
+revoke all on public.quiz_qlog from anon, authenticated;
+
+-- 輪詢（學員只拿得到目前題目的文字，拿不到正解與短評）
+create or replace function public.quiz_poll(p_device text)
+returns json language plpgsql security definer set search_path = public as $$
+declare s quiz_state; r json;
+begin
+  update quiz_state set status = 'revealed' where id = 1 and status = 'active' and now() > deadline_at;
+  select * into s from quiz_state where id = 1;
+  select json_build_object(
+    'v',        3,
+    'now',      floor(extract(epoch from clock_timestamp()) * 1000),
+    'round',    s.round,
+    'status',   s.status,
+    'q',        s.current_q,
+    'nq',       jsonb_array_length(s.config->'questions'),
+    'qtext',    case when s.status in ('active','revealed') then s.config->'questions'->(s.current_q - 1)->>'text' end,
+    'unitList', s.config->'units',
+    'seconds',  s.seconds,
+    'deadline', case when s.deadline_at is null then null else floor(extract(epoch from s.deadline_at) * 1000) end,
+    'total',    (select count(*) from quiz_participants where round = s.round),
+    'units',    coalesce((select json_agg(json_build_object('u', unit, 'n', n) order by n desc, unit)
+                            from (select unit, count(*) n from quiz_participants where round = s.round group by unit) x), '[]'::json),
+    'me_unit',  (select unit from quiz_participants where round = s.round and device_id = p_device),
+    'me_ans',   (select answer from quiz_answers where round = s.round and device_id = p_device and q = s.current_q),
+    'answered', (select count(*) from quiz_answers where round = s.round and q = s.current_q),
+    'eligible', (select eligible from quiz_qlog where round = s.round and q = s.current_q),
+    'counts',   case when s.status in ('revealed','finished') then
+                  (select json_build_object('t', count(*) filter (where answer = 'T'), 'f', count(*) filter (where answer = 'F'))
+                     from quiz_answers where round = s.round and q = s.current_q) end,
+    'summary',  case when s.status = 'finished' then
+                  coalesce((select json_agg(json_build_object('q', q, 't', t, 'f', f) order by q)
+                              from (select q, count(*) filter (where answer = 'T') t, count(*) filter (where answer = 'F') f
+                                      from quiz_answers where round = s.round group by q) y), '[]'::json) end
+  ) into r;
+  return r;
+end $$;
+
+-- 報到
+create or replace function public.quiz_join(p_device text, p_unit text)
+returns json language plpgsql security definer set search_path = public as $$
+declare rd int; u text := btrim(coalesce(p_unit, ''));
+begin
+  if length(coalesce(p_device, '')) < 8 or length(p_device) > 64 then return json_build_object('ok', false, 'err', 'bad_device'); end if;
+  if length(u) < 1 or length(u) > 20 then return json_build_object('ok', false, 'err', 'bad_unit'); end if;
+  select round into rd from quiz_state where id = 1;
+  insert into quiz_participants (round, device_id, unit) values (rd, p_device, u)
+  on conflict (round, device_id) do update set unit = excluded.unit;
+  return json_build_object('ok', true, 'round', rd);
+end $$;
+
+-- 作答（目前這一題、時間內、已報到，每題限一次；寬限 1.5 秒網路延遲）
+create or replace function public.quiz_answer(p_device text, p_q int, p_ans text)
+returns json language plpgsql security definer set search_path = public as $$
+declare s quiz_state;
+begin
+  select * into s from quiz_state where id = 1;
+  if s.status not in ('active','revealed') or s.current_q <> p_q or now() > s.deadline_at + interval '1.5 seconds' then
+    return json_build_object('ok', false, 'err', 'closed');
+  end if;
+  if p_ans not in ('T','F') then return json_build_object('ok', false, 'err', 'bad_answer'); end if;
+  if not exists (select 1 from quiz_participants where round = s.round and device_id = p_device) then
+    return json_build_object('ok', false, 'err', 'not_joined');
+  end if;
+  insert into quiz_answers (round, device_id, q, answer) values (s.round, p_device, p_q, p_ans) on conflict do nothing;
+  return json_build_object('ok', true, 'ans', (select answer from quiz_answers where round = s.round and device_id = p_device and q = p_q));
+end $$;
+
+-- 教官控場（需密碼）：check／get_config／save_config／set_pin／start／reveal／finish／reset／history
+create or replace function public.quiz_host(p_pin text, p_action text, p_q int default null, p_data jsonb default null)
+returns json language plpgsql security definer set search_path = public as $$
+declare s quiz_state; n int; i int; qs jsonb; sec int; newpin text; rd int; qsec jsonb;
+begin
+  select * into s from quiz_state where id = 1;
+  if encode(sha256(convert_to(coalesce(p_pin, ''), 'UTF8')), 'hex') <> s.host_hash then
+    perform pg_sleep(1);   -- 密碼錯誤延遲 1 秒，防止被程式猜密碼
+    return json_build_object('ok', false, 'err', 'bad_pin');
+  end if;
+  n := jsonb_array_length(s.config->'questions');
+
+  if p_action = 'check' then
+    null;
+  elsif p_action = 'get_config' then
+    return json_build_object('ok', true, 'config', s.config);
+  elsif p_action = 'save_config' then
+    if s.status = 'active' then return json_build_object('ok', false, 'err', 'busy'); end if;
+    qs := p_data->'questions';
+    if jsonb_typeof(qs) <> 'array' or jsonb_array_length(qs) < 1 or jsonb_array_length(qs) > 50 then
+      return json_build_object('ok', false, 'err', 'bad_questions');
+    end if;
+    for i in 0 .. jsonb_array_length(qs) - 1 loop
+      if length(btrim(coalesce(qs->i->>'text', ''))) = 0 or jsonb_typeof(qs->i->'answer') <> 'boolean' then
+        return json_build_object('ok', false, 'err', 'bad_questions', 'at', i + 1);
+      end if;
+      qsec := qs->i->'seconds';
+      if qsec is not null and jsonb_typeof(qsec) <> 'null' and
+         (jsonb_typeof(qsec) <> 'number' or (qsec::text)::numeric < 5 or (qsec::text)::numeric > 180) then
+        return json_build_object('ok', false, 'err', 'bad_qseconds', 'at', i + 1);
+      end if;
+    end loop;
+    if jsonb_typeof(p_data->'units') <> 'array' then return json_build_object('ok', false, 'err', 'bad_units'); end if;
+    sec := coalesce((p_data->>'seconds')::int, 20);
+    if sec < 5 or sec > 180 then return json_build_object('ok', false, 'err', 'bad_seconds'); end if;
+    update quiz_state set config = jsonb_build_object(
+        'units', p_data->'units', 'seconds', sec,
+        'passRate', coalesce((p_data->>'passRate')::numeric, 0.6), 'questions', qs)
+     where id = 1;
+  elsif p_action = 'set_pin' then
+    newpin := btrim(coalesce(p_data->>'pin', ''));
+    if length(newpin) < 4 then return json_build_object('ok', false, 'err', 'short_pin'); end if;
+    update quiz_state set host_hash = encode(sha256(convert_to(newpin, 'UTF8')), 'hex') where id = 1;
+  elsif p_action = 'start' then
+    if p_q is null or p_q < 1 or p_q > n then return json_build_object('ok', false, 'err', 'bad_q'); end if;
+    -- 本題有設定秒數就用本題的，沒有就用預設秒數
+    sec := coalesce(nullif(s.config->'questions'->(p_q - 1)->>'seconds', '')::numeric::int, (s.config->>'seconds')::int, 20);
+    update quiz_state set status = 'active', current_q = p_q, seconds = sec,
+           started_at = now(), deadline_at = now() + make_interval(secs => sec) where id = 1;
+    insert into quiz_qlog (round, q, started_at, seconds, eligible, qtext, answer)
+    values (s.round, p_q, now(), sec, (select count(*) from quiz_participants where round = s.round),
+            s.config->'questions'->(p_q - 1)->>'text', (s.config->'questions'->(p_q - 1)->>'answer')::boolean)
+    on conflict (round, q) do update set started_at = excluded.started_at, seconds = excluded.seconds,
+      eligible = excluded.eligible, qtext = excluded.qtext, answer = excluded.answer;
+  elsif p_action = 'reveal' then
+    update quiz_state set status = 'revealed', deadline_at = least(deadline_at, now()) where id = 1 and status = 'active';
+  elsif p_action = 'finish' then
+    update quiz_state set status = 'finished' where id = 1;
+  elsif p_action = 'reset' then
+    update quiz_state set round = round + 1, status = 'waiting', current_q = 0, started_at = null, deadline_at = null where id = 1;
+  elsif p_action = 'history' then
+    -- 歷次梯次成績：p_q 指定梯次（未指定＝目前梯次）
+    rd := coalesce(p_q, s.round);
+    return json_build_object('ok', true, 'current', s.round,
+      'rounds', coalesce((select json_agg(json_build_object('round', r, 'n', np, 'first', floor(extract(epoch from t0) * 1000)) order by r desc)
+                  from (select x.r, (select count(*) from quiz_participants p where p.round = x.r) np,
+                               least((select min(joined_at) from quiz_participants p where p.round = x.r),
+                                     (select min(started_at) from quiz_qlog l where l.round = x.r)) t0
+                          from (select distinct round r from quiz_participants
+                                union select distinct round from quiz_qlog
+                                union select s.round) x) z), '[]'::json),
+      'detail', json_build_object(
+        'round', rd,
+        'total', (select count(*) from quiz_participants where round = rd),
+        'units', coalesce((select json_agg(json_build_object('u', unit, 'n', c) order by c desc, unit)
+                             from (select unit, count(*) c from quiz_participants where round = rd group by unit) u), '[]'::json),
+        'questions', coalesce((select json_agg(json_build_object(
+                      'q', k.q,
+                      'text', coalesce(l.qtext, s.config->'questions'->(k.q - 1)->>'text'),
+                      'answer', coalesce(l.answer, (s.config->'questions'->(k.q - 1)->>'answer')::boolean),
+                      'eligible', coalesce(l.eligible, (select count(*) from quiz_participants where round = rd)),
+                      't', (select count(*) from quiz_answers a where a.round = rd and a.q = k.q and a.answer = 'T'),
+                      'f', (select count(*) from quiz_answers a where a.round = rd and a.q = k.q and a.answer = 'F')) order by k.q)
+                    from (select q from quiz_qlog where round = rd union select distinct q from quiz_answers where round = rd) k
+                    left join quiz_qlog l on l.round = rd and l.q = k.q), '[]'::json)));
   else
     return json_build_object('ok', false, 'err', 'bad_action');
   end if;
@@ -408,6 +659,64 @@ const LS = store(window.localStorage), SS = store(window.sessionStorage);
 const app = document.getElementById("app");
 function esc(x){ return String(x == null ? "" : x).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 function toast(m){ const t = document.createElement("div"); t.className = "toast"; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 2200); }
+/* ---------- QR Code 產生器（內建，不需連外部網站；位元組模式、M 級容錯） ---------- */
+const QR = (() => {
+  const ECC = [-1,10,16,26,18,24,16,18,22,22,26,30,22,22,24,24,28,28,26,26,26];
+  const BLK = [-1,1,1,1,2,2,4,4,4,5,5,5,8,9,9,10,10,11,13,14,16];
+  const rawMods = v => { let r = (16 * v + 128) * v + 64; if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; } return r; };
+  const dataCw = v => Math.floor(rawMods(v) / 8) - ECC[v] * BLK[v];
+  const mul = (x, y) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11D); z ^= ((y >>> i) & 1) * x; } return z & 255; };
+  function rsDiv(d){ const r = new Array(d).fill(0); r[d - 1] = 1; let root = 1; for (let i = 0; i < d; i++) { for (let j = 0; j < d; j++) { r[j] = mul(r[j], root); if (j + 1 < d) r[j] ^= r[j + 1]; } root = mul(root, 2); } return r; }
+  function rsRem(data, div){ const r = div.map(() => 0); for (const b of data) { const f = b ^ r.shift(); r.push(0); div.forEach((c, i) => r[i] ^= mul(c, f)); } return r; }
+  function make(text){
+    const bytes = Array.from(new TextEncoder().encode(text));
+    let v = 1; for (; v <= 20; v++) if (4 + (v < 10 ? 8 : 16) + bytes.length * 8 <= dataCw(v) * 8) break;
+    if (v > 20) return null;
+    const bits = []; const put = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+    put(4, 4); put(bytes.length, v < 10 ? 8 : 16); bytes.forEach(b => put(b, 8));
+    const cap = dataCw(v) * 8; put(0, Math.min(4, cap - bits.length)); put(0, (8 - bits.length % 8) % 8);
+    for (let p = 0xEC; bits.length < cap; p ^= 0xEC ^ 0x11) put(p, 8);
+    const data = []; for (let i = 0; i < bits.length; i += 8) data.push(parseInt(bits.slice(i, i + 8).join(""), 2));
+    // 分塊加上錯誤更正碼後交錯
+    const nb = BLK[v], el = ECC[v], raw = Math.floor(rawMods(v) / 8), nShort = nb - raw % nb, sLen = Math.floor(raw / nb), div = rsDiv(el), blocks = [];
+    for (let i = 0, k = 0; i < nb; i++) { const dat = data.slice(k, k + sLen - el + (i < nShort ? 0 : 1)); k += dat.length; const e = rsRem(dat, div); if (i < nShort) dat.push(0); blocks.push(dat.concat(e)); }
+    const cw = []; for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== sLen - el || j >= nShort) cw.push(b[i]); });
+    const size = v * 4 + 17, M = [], F = [];
+    for (let y = 0; y < size; y++) { M.push(new Array(size).fill(false)); F.push(new Array(size).fill(false)); }
+    const set = (x, y, d) => { M[y][x] = d; F[y][x] = true; };
+    for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    [[3, 3], [size - 4, 3], [3, size - 4]].forEach(([cx, cy]) => { for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const d = Math.max(Math.abs(dx), Math.abs(dy)), x = cx + dx, y = cy + dy; if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4); } });
+    if (v > 1) {
+      const n = Math.floor(v / 7) + 2, step = Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2, pos = [6];
+      for (let p = size - 7; pos.length < n; p -= step) pos.splice(1, 0, p);
+      pos.forEach((a, i) => pos.forEach((b, j) => { if ((i === 0 && j === 0) || (i === 0 && j === n - 1) || (i === n - 1 && j === 0)) return; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(a + dx, b + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1); }));
+    }
+    const fmt = mask => { const d = (0 << 3) | mask; let r = d; for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537); const b = ((d << 10) | r) ^ 0x5412, g = i => ((b >>> i) & 1) === 1;
+      for (let i = 0; i <= 5; i++) set(8, i, g(i)); set(8, 7, g(6)); set(8, 8, g(7)); set(7, 8, g(8)); for (let i = 9; i < 15; i++) set(14 - i, 8, g(i));
+      for (let i = 0; i < 8; i++) set(size - 1 - i, 8, g(i)); for (let i = 8; i < 15; i++) set(8, size - 15 + i, g(i)); set(8, size - 8, true); };
+    fmt(0);
+    if (v >= 7) { let r = v; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1F25); const b = (v << 12) | r; for (let i = 0; i < 18; i++) { const bit = ((b >>> i) & 1) === 1, a = size - 11 + i % 3, c = Math.floor(i / 3); set(a, c, bit); set(c, a, bit); } }
+    let i = 0;
+    for (let right = size - 1; right >= 1; right -= 2) { if (right === 6) right = 5; for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) { const x = right - j, up = ((right + 1) & 2) === 0, y = up ? size - 1 - vert : vert; if (!F[y][x] && i < cw.length * 8) { M[y][x] = ((cw[i >>> 3] >>> (7 - (i & 7))) & 1) === 1; i++; } } }
+    const maskFn = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, x => x % 3 === 0, (x, y) => (x + y) % 3 === 0, (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => x * y % 2 + x * y % 3 === 0, (x, y) => (x * y % 2 + x * y % 3) % 2 === 0, (x, y) => ((x + y) % 2 + x * y % 3) % 2 === 0];
+    const apply = m => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!F[y][x] && maskFn[m](x, y)) M[y][x] = !M[y][x]; };
+    const penalty = () => { let p = 0, dark = 0;
+      for (let k = 0; k < 2; k++) for (let a = 0; a < size; a++) { let run = 1; for (let b = 1; b < size; b++) { const c = k ? M[b][a] : M[a][b], pv = k ? M[b - 1][a] : M[a][b - 1]; if (c === pv) { run++; if (run === 5) p += 3; else if (run > 5) p++; } else run = 1; } }
+      for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) { const c = M[y][x]; if (c === M[y][x + 1] && c === M[y + 1][x] && c === M[y + 1][x + 1]) p += 3; }
+      M.forEach(r => r.forEach(c => { if (c) dark++; })); p += Math.floor(Math.abs(dark * 20 - size * size * 10) / (size * size)) * 10; return p; };
+    let best = 0, bestP = Infinity;
+    for (let m = 0; m < 8; m++) { apply(m); fmt(m); const p = penalty(); if (p < bestP) { bestP = p; best = m; } apply(m); }
+    apply(best); fmt(best);
+    return M;
+  }
+  function svg(text){
+    const M = make(text); if (!M) return "";
+    const n = M.length, q = 4; let d = "";
+    M.forEach((row, y) => row.forEach((c, x) => { if (c) d += `M${x + q},${y + q}h1v1h-1z`; }));
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n + q * 2} ${n + q * 2}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+  }
+  return { svg, make };
+})();
 
 /* ---------- 連線 ---------- */
 function normUrl(u){ return String(u || "").trim().replace(/\/+$/,"").replace(/\/rest\/v1$/,"").replace(/\/+$/,""); }
@@ -602,46 +911,111 @@ function hostInit(){
   let S = null, CFG = null, pin = SS.get("dq_pin") || "", busy = false, ok = true, lastKey = "";
   let tab = "ctrl", draft = null, dirty = false, wizStep = hasCfg() ? 4 : 1;
 
-  /* ---------- 控場音效（Web Audio 即時合成，不需音檔、不需網路） ---------- */
+  /* ---------- 控場音效與節奏音樂（Web Audio 即時合成，不需音檔、不需網路） ---------- */
   const SFX = (() => {
-    let ctx = null, master = null, on = LS.get("dq_sfx") !== "0", vol = Number(LS.get("dq_vol") || 2);
+    let ctx = null, master = null, noiseBuf = null;
+    let on = LS.get("dq_sfx") !== "0", music = LS.get("dq_music") !== "0", muted = LS.get("dq_mute") === "1";
+    let vol = Number(LS.get("dq_vol") || 2); if (!(vol >= 1 && vol <= 3)) vol = 2;
     const VOLS = [0, 0.35, 0.7, 1.0];
     function ac(){
-      if (!ctx) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; ctx = new C(); master = ctx.createGain(); master.connect(ctx.destination); }
+      if (!ctx) {
+        const C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
+        ctx = new C(); master = ctx.createGain(); master.connect(ctx.destination);
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+        const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
       if (ctx.state === "suspended") ctx.resume();
-      master.gain.value = VOLS[vol] || 0.7;
+      master.gain.value = muted ? 0 : (VOLS[vol] || 0.7);
       return ctx;
     }
-    function tone(freq, at, dur, type, peak, glide){
-      if (!on) return; const c = ac(); if (!c || c.state !== "running") return;
-      const t = c.currentTime + (at || 0), o = c.createOscillator(), g = c.createGain();
+    // 單音：dest 未指定時接到總音量
+    function tone(freq, at, dur, type, peak, glide, dest, absT){
+      const c = ctx; if (!c || c.state !== "running" || muted) return;
+      const t = absT != null ? absT : c.currentTime + (at || 0), o = c.createOscillator(), g = c.createGain();
       o.type = type || "sine"; o.frequency.setValueAtTime(freq, t);
       if (glide) o.frequency.exponentialRampToValueAtTime(glide, t + dur);
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak || 0.25, t + 0.012);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
-      SFX.count = (SFX.count || 0) + 1;
+      o.connect(g); g.connect(dest || master); o.start(t); o.stop(t + dur + 0.05);
     }
+    function sfx(freq, at, dur, type, peak, glide){ if (on) { ac(); tone(freq, at, dur, type, peak, glide); } }
+    function noise(t, dur, peak, hp, dest){
+      if (!ctx || muted) return;
+      const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      s.buffer = noiseBuf; f.type = "highpass"; f.frequency.value = hp || 6000;
+      g.gain.setValueAtTime(peak, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      s.connect(f); f.connect(g); g.connect(dest); s.start(t); s.stop(t + dur + 0.02);
+    }
+
+    /* ---- 節奏音樂：lobby＝報到待機；game＝作答中；urgent＝最後 5 秒 ---- */
+    const N = n => 440 * Math.pow(2, (n - 69) / 12);   // MIDI 音高 → 頻率
+    const SONGS = {
+      // 報到待機：輕快 lounge（Am–F–C–G），每分鐘 100 拍
+      lobby: { bpm: 100, gain: 0.32, chords: [[57,60,64],[53,57,60],[48,52,55],[55,59,62]], bass: [45,41,36,43] },
+      // 作答中：四拍鼓組＋貝斯（Em–C–G–D），每分鐘 124 拍
+      game: { bpm: 124, gain: 0.42, chords: [[52,55,59],[48,52,55],[55,59,62],[50,54,57]], bass: [40,36,43,38] },
+      // 最後 5 秒：加速、升調、16 分音符銅鈸＋小鼓連擊
+      urgent: { bpm: 152, gain: 0.5, chords: [[54,57,61],[50,54,57],[57,61,64],[52,56,59]], bass: [42,38,45,40] }
+    };
+    let mode = null, bus = null, nextT = 0, step = 0, timer = null;
+    function playStep(m, i, t){
+      const S = SONGS[m], bar = Math.floor(i / 16) % 4, s = i % 16, ch = S.chords[bar], b = S.bass[bar], len = 60 / S.bpm / 4;
+      if (m === "lobby") {
+        if (s === 0 || s === 8) tone(70, 0, 0.18, "sine", 0.5, 40, bus, t);                    // 輕柔大鼓
+        if (s % 4 === 2) noise(t, 0.04, 0.12, 8000, bus);                                      // 反拍腳踏鈸
+        if (s === 0 || s === 6 || s === 10) tone(N(b), 0, len * 3, "triangle", 0.35, null, bus, t); // 貝斯
+        if (s % 2 === 0) tone(N(ch[(s / 2) % 3] + 12), 0, len * 1.6, "sine", 0.13, null, bus, t);   // 琶音
+        if (s === 0) ch.forEach(n => tone(N(n), 0, len * 14, "triangle", 0.05, null, bus, t));      // 和弦鋪底
+      } else {
+        const urgent = m === "urgent";
+        if (s % 4 === 0) tone(urgent ? 75 : 62, 0, 0.22, "sine", 0.85, 38, bus, t);           // 四拍大鼓
+        if (s === 4 || s === 12 || (urgent && s >= 13)) { noise(t, 0.12, 0.45, 1800, bus); tone(190, 0, 0.08, "triangle", 0.25, 120, bus, t); } // 小鼓
+        if (urgent || s % 2 === 0) noise(t, s % 4 === 2 ? 0.09 : 0.035, s % 4 === 2 ? 0.16 : 0.09, 7000, bus); // 銅鈸
+        if (s % 2 === 0) tone(N(b + (s % 8 === 6 ? 12 : 0)), 0, len * 1.7, "sawtooth", 0.17, null, bus, t);   // 貝斯八分音符
+        if (s === 0 || s === 10) ch.forEach(n => tone(N(n + 12), 0, len * 1.4, "square", 0.035, null, bus, t)); // 和弦刺擊
+        if (urgent && s % 4 === 0) tone(N(ch[2] + 24), 0, len, "square", 0.05, null, bus, t);  // 高音警示
+      }
+    }
+    function schedule(){
+      if (!mode || !ctx) return;
+      const len = 60 / SONGS[mode].bpm / 4;
+      while (nextT < ctx.currentTime + 0.15) { playStep(mode, step, nextT); nextT += len; step++; }
+    }
+    function setMode(m){
+      if (m === mode) return;
+      const c = ctx;
+      if (bus && c) { const old = bus; old.gain.setTargetAtTime(0, c.currentTime, 0.04); setTimeout(() => old.disconnect(), 400); bus = null; }
+      mode = m;
+      if (!m || !c || c.state !== "running") { mode = null; return; }
+      bus = c.createGain(); bus.gain.value = SONGS[m].gain; bus.connect(master);
+      if (m !== "urgent") step = 0;                      // 進入最後 5 秒時接續原本拍點
+      nextT = c.currentTime + 0.05;
+      if (!timer) timer = setInterval(schedule, 25);
+    }
+
     const api = {
       unlock(){ ac(); },
       ready(){ return !!ctx && ctx.state === "running"; },
-      get on(){ return on; }, get vol(){ return vol; },
+      get on(){ return on; }, get music(){ return music; }, get muted(){ return muted; }, get vol(){ return vol; }, get mode(){ return mode; },
       toggle(){ on = !on; LS.set("dq_sfx", on ? "1" : "0"); if (on) { ac(); setTimeout(api.join, 60); } return on; },
-      cycleVol(){ vol = vol >= 3 ? 1 : vol + 1; LS.set("dq_vol", String(vol)); ac(); api.join(); return vol; },
+      toggleMusic(){ music = !music; LS.set("dq_music", music ? "1" : "0"); ac(); if (!music) setMode(null); return music; },
+      toggleMute(){ muted = !muted; LS.set("dq_mute", muted ? "1" : "0"); ac(); if (muted) setMode(null); else setTimeout(api.join, 60); return muted; },
+      cycleVol(){ vol = vol >= 3 ? 1 : vol + 1; LS.set("dq_vol", String(vol)); ac(); if (on) api.join(); return vol; },
+      setMode(m){ setMode(music && !muted && api.ready() ? m : null); },
       // 有人報到：清脆「叮咚」
-      join(){ tone(880, 0, 0.12, "sine", 0.22); tone(1320, 0.08, 0.18, "sine", 0.2); },
+      join(){ sfx(880, 0, 0.12, "sine", 0.22); sfx(1320, 0.08, 0.18, "sine", 0.2); },
       // 開始作答：上行四音號角
-      start(){ [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.1, i === 3 ? 0.5 : 0.22, "triangle", 0.32)); tone(131, 0, 0.6, "sine", 0.3); },
-      // 倒數節奏：每秒「滴答」交替（低音鼓＋清脆滴答）
-      beat(n){ const hi = n % 2 === 0; tone(hi ? 1000 : 760, 0, 0.05, "square", 0.07); tone(hi ? 110 : 82, 0, 0.16, "sine", 0.32, 50); },
+      start(){ [523, 659, 784, 1047].forEach((f, i) => sfx(f, i * 0.1, i === 3 ? 0.5 : 0.22, "triangle", 0.32)); sfx(131, 0, 0.6, "sine", 0.3); },
+      // 倒數節奏（音樂關閉時才用）：每秒「滴答」交替
+      beat(n){ const hi = n % 2 === 0; sfx(hi ? 1000 : 760, 0, 0.05, "square", 0.07); sfx(hi ? 110 : 82, 0, 0.16, "sine", 0.32, 50); },
       // 最後 5 秒：急促高音嗶（每半秒一次）
-      hurry(final){ tone(final ? 1568 : 1319, 0, 0.09, "square", 0.13); tone(98, 0, 0.12, "sine", 0.3, 55); },
+      hurry(final){ sfx(final ? 1568 : 1319, 0, 0.09, "square", 0.13); sfx(98, 0, 0.12, "sine", 0.3, 55); },
       // 時間到：低沉蜂鳴
-      buzzer(){ tone(196, 0, 0.7, "sawtooth", 0.2, 98); tone(147, 0, 0.7, "sawtooth", 0.16, 73); },
+      buzzer(){ sfx(196, 0, 0.7, "sawtooth", 0.2, 98); sfx(147, 0, 0.7, "sawtooth", 0.16, 73); },
       // 揭曉：明亮和弦
-      reveal(at){ [784, 988, 1175, 1568].forEach((f, i) => tone(f, (at || 0) + i * 0.09, 0.7, "sine", 0.2)); },
+      reveal(at){ [784, 988, 1175, 1568].forEach((f, i) => sfx(f, (at || 0) + i * 0.09, 0.7, "sine", 0.2)); },
       // 測驗結束：勝利號角
-      finish(){ [[523,0],[523,.15],[523,.3],[659,.45],[784,.75],[659,.95],[784,1.1]].forEach(([f, t], i) => tone(f, t, i === 6 ? 0.9 : 0.2, "triangle", 0.3)); tone(131, 1.1, 0.9, "sine", 0.3); }
+      finish(){ [[523,0],[523,.15],[523,.3],[659,.45],[784,.75],[659,.95],[784,1.1]].forEach(([f, t], i) => sfx(f, t, i === 6 ? 0.9 : 0.2, "triangle", 0.3)); sfx(131, 1.1, 0.9, "sine", 0.3); }
     };
     return api;
   })();
@@ -653,31 +1027,44 @@ function hostInit(){
     const p = sfxPrev; sfxPrev = cur;
     if (!p) return;
     if (cur.round !== p.round) return;
-    if (cur.status === "active" && (p.status !== "active" || p.q !== cur.q)) { SFX.start(); sfxBeat = null; }
-    else if (cur.status === "revealed" && p.status === "active") { SFX.buzzer(); SFX.reveal(0.75); }
+    if (cur.status === "active" && (p.status !== "active" || p.q !== cur.q)) { SFX.setMode(null); SFX.start(); sfxBeat = null; }
+    else if (cur.status === "revealed" && p.status === "active") { SFX.setMode(null); SFX.buzzer(); SFX.reveal(0.75); }
     else if (cur.status === "finished" && p.status !== "finished") SFX.finish();
     if (cur.total > p.total && cur.status === "waiting" && Date.now() - sfxJoinAt > 180) { sfxJoinAt = Date.now(); SFX.join(); }
   }
-  // 倒數節奏：前段每秒一拍，最後 5 秒每半秒一拍
+  // 每 0.1 秒：切換背景音樂段落；音樂關閉時改用滴答節拍
   function sfxTick(){
+    const r = S && S.status === "active" ? remain(S) : 0;
+    let want = null;
+    if (pin && S) {
+      if (S.status === "waiting") want = "lobby";
+      else if (S.status === "active" && r > 0 && (S.seconds || 20) - r > 0.9) want = r > 5 ? "game" : "urgent";   // 開題號角響完才進音樂
+    }
+    SFX.setMode(want);
     if (!S || S.status !== "active") { sfxBeat = null; return; }
-    const r = remain(S); if (r <= 0) return;
+    if (r <= 0) return;
     const key = r > 5 ? "s" + Math.ceil(r) : "h" + Math.ceil(r * 2);
     if (key === sfxBeat) return;
     const first = sfxBeat === null; sfxBeat = key;
-    if (first && Date.now() - (S._t || 0) < 400) return;   // 剛開題時讓號角先響完
+    if (first && (S.seconds || 20) - r < 0.6) return;      // 剛開題時讓號角先響完
+    if (SFX.music && SFX.mode) return;                     // 有背景音樂時，由鼓點帶節奏
     if (r > 5) SFX.beat(Math.ceil(r)); else SFX.hurry(r <= 1);
   }
   function sfxBtn(){
-    const lab = !SFX.on ? "🔇 音效：關" : (!SFX.ready() ? "🔈 點一下啟用音效" : "🔊 音效：開");
-    return `<button type="button" class="cbtn ghost" data-a="sfx">${lab}</button>` + (SFX.on ? `<button type="button" class="cbtn ghost" data-a="vol">音量 ${"▮".repeat(SFX.vol)}${"▯".repeat(3 - SFX.vol)}</button>` : "");
+    if (!SFX.ready()) return `<button type="button" class="cbtn ghost sm" data-a="unlock">🔈 點一下啟用聲音</button>`;
+    if (SFX.muted) return `<button type="button" class="cbtn ghost sm armed" data-a="mute">🔇 已全部靜音（點此恢復）</button>`;
+    return `<button type="button" class="cbtn ghost sm" data-a="mute">🔇 全部靜音</button>
+      <button type="button" class="cbtn ghost sm" data-a="sfx">${SFX.on ? "🔔 音效：開" : "🔕 音效：關"}</button>
+      <button type="button" class="cbtn ghost sm" data-a="music">${SFX.music ? "🎵 音樂：開" : "🎵 音樂：關"}</button>
+      <button type="button" class="cbtn ghost sm" data-a="vol">音量 ${"▮".repeat(SFX.vol)}${"▯".repeat(3 - SFX.vol)}</button>`;
   }
 
   /* ---------- 共用：下載已填好連線的檔案、複製 SQL ---------- */
   function configuredHTML(){
     const c = cfg();
     const line = `const CONN = ${JSON.stringify({ url: c.url, key: c.key })}; /*@@CONN@@*/`;
-    return ORIGINAL_HTML.replace(/const CONN = \{[^\n]*\}; \/\*@@CONN@@\*\//, () => line);
+    return ORIGINAL_HTML.replace(/const CONN = \{[^\n]*\}; \/\*@@CONN@@\*\//, () => line)
+      .replace(/<(script|link)\b[^>]*(?:src|href)="(?:chrome|moz|safari-web|ms-browser)-extension:\/\/[^"]*"[^>]*>(?:<\/script>)?/gi, "");
   }
   function downloadConfigured(){
     const blob = new Blob([configuredHTML()], { type:"text/html;charset=utf-8" });
@@ -774,8 +1161,17 @@ function hostInit(){
   function shell(){
     const warn = cfg().embedded ? "" : `<div class="banner"><div>⚠ 這份檔案還沒內建連線資料，學員手機會連不上。請下載設定好的檔案再上傳網站。<button type="button" class="mini" data-a="download">⬇ 下載設定好的 quiz.html</button></div></div>`;
     const t = (id, name) => `<button type="button" class="htab" data-tab="${id}" aria-selected="${tab === id}">${name}</button>`;
-    app.innerHTML = `${warn}<nav class="htabs">${t("ctrl","📊 控場看板")}${t("edit","📝 題目編輯")}${t("set","⚙ 設定")}</nav><div id="hBody"></div>`;
+    app.innerHTML = `${warn}<div id="updBox"></div><nav class="htabs">${t("ctrl","📊 控場看板")}${t("edit","📝 題目編輯")}${t("set","⚙ 設定")}<button type="button" class="htab fs" data-a="fs">${document.fullscreenElement ? "⛶ 離開全螢幕" : "⛶ 全螢幕"}</button></nav><div id="hBody"></div>`;
+    updBanner();
   }
+  // 資料庫還是舊版（第 2 版）時提示執行更新用 SQL
+  function needUpdate(){ return !!S && S.v !== 3; }
+  function updBanner(){
+    const box = document.getElementById("updBox"); if (!box) return;
+    const html = needUpdate() ? `<div class="upd"><div>⚠ 資料庫需要更新一次，才能使用「每題秒數」「歷次梯次成績」與更準確的答對率。請按「📋 複製更新用 SQL」，到 Supabase 的 SQL Editor 貼上按 Run（不會清除任何資料）。<button type="button" class="mini" data-a="copyupd">📋 複製更新用 SQL</button></div></div>` : "";
+    if (box.innerHTML !== html) box.innerHTML = html;
+  }
+  function qSec(i){ const q = CFG && CFG.questions && CFG.questions[i - 1]; return q && q.seconds ? q.seconds : ((CFG && CFG.seconds) || 20); }
   function setTab(t){
     if (tab === "edit" && t !== "edit" && dirty && !confirm("題目有修改尚未儲存，確定要離開嗎？（未儲存的修改會遺失）")) return;
     if (t !== "edit") { dirty = false; draft = null; }
@@ -791,10 +1187,11 @@ function hostInit(){
   function render(force){
     if (!pin) return;
     document.getElementById("topRight").innerHTML = `<span style="font-size:15px;font-weight:800"><span class="dot${ok ? "" : " off"}"></span>${ok ? "連線正常" : "連線中斷"}${S ? `｜第 ${S.round} 梯次` : ""}</span>`;
+    updBanner();
     if (tab !== "ctrl") return;
     if (!document.getElementById("hBody")) shell();
     if (!S || !CFG) return;
-    const key = [S.status, S.q, S.total, S.answered, JSON.stringify(S.units), JSON.stringify(S.counts), JSON.stringify(S.summary), busy, remain(S) > 0, SFX.on, SFX.vol, SFX.ready()].join("~");
+    const key = [S.status, S.q, S.total, S.answered, JSON.stringify(S.units), JSON.stringify(S.counts), JSON.stringify(S.summary), busy, remain(S) > 0, SFX.on, SFX.vol, SFX.ready(), SFX.music, SFX.muted, S.eligible, histKey()].join("~");
     if (!force && key === lastKey) { tick(); return; }
     lastKey = key;
     const Q = CFG.questions || [], NQ = Q.length;
@@ -802,20 +1199,21 @@ function hostInit(){
     const side = `<div class="panel"><h3>進場報到監控</h3><div class="total">${S.total}<small>人已進場</small></div>${unitsHtml}</div>`;
     const stName = { waiting:"報到待機中", active:`第 ${S.q} 題作答中`, revealed:`第 ${S.q} 題已揭曉`, finished:"測驗結束" }[S.status];
     const item = Q[S.q - 1] || { text: S.qtext || "", answer:true, comment:"" };
-    let stage = `<div class="hq-meta"><span class="status ${S.status}">${stName}</span>${S.status === "active" || S.status === "revealed" ? `<span class="hq-n">第 ${S.q} 題／共 ${NQ} 題</span>` : `<span class="hq-n">題庫共 ${NQ} 題・每題 ${CFG.seconds || 20} 秒</span>`}</div>`;
+    let stage = `<div class="hq-meta"><span class="status ${S.status}">${stName}</span>${S.status === "active" || S.status === "revealed" ? `<span class="hq-n">第 ${S.q} 題／共 ${NQ} 題・本題 ${S.seconds || qSec(S.q)} 秒</span>` : `<span class="hq-n">題庫共 ${NQ} 題・${Q.some(x => x.seconds) ? "預設" : ""}每題 ${CFG.seconds || 20} 秒</span>`}</div>`;
     if (S.status === "waiting") {
       const link = joinUrl(), web = /^https?:/.test(link);
-      stage += `<div class="panel"><div class="qrbox">${web ? `<img alt="報到 QR Code" src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=0&data=${encodeURIComponent(link)}" onerror="this.remove()">` : ""}
+      stage += `<div class="panel"><div class="qrbox">${web ? `<div class="qrsvg" role="img" aria-label="報到 QR Code">${QR.svg(link)}</div>` : ""}
         <div style="flex:1;min-width:240px"><p class="big">請掃描 QR Code<br>選擇單位後報到進場</p>
         <p class="url">${web ? esc(link) : "（目前以本機檔案開啟；上傳網站後這裡會顯示學員報到網址與 QR Code）"}</p></div></div></div>
-        <p class="empty" style="font-size:17px">確認各單位都已進場後，按下方「▶ 開始第 1 題」。</p>`;
+        <p class="empty" style="font-size:17px">確認各單位都已進場後，按下方「▶ 開始第 1 題」。</p>
+        <p class="keys">簡報筆／鍵盤：<kbd>→</kbd><kbd>PgDn</kbd><kbd>空白</kbd> 開始・下一題・結束　<kbd>←</kbd><kbd>PgUp</kbd><kbd>Esc</kbd> 提早截止　<kbd>M</kbd> 全部靜音　<kbd>F</kbd> 全螢幕</p>`;
     } else if (S.status === "active") {
       stage += `<p class="hq-text">${esc(item.text)}</p><div class="htimer" id="htm">--</div><div class="hbar" id="hb"><i id="hbi" style="width:100%"></i></div>
         <div class="answered">已作答 <b>${S.answered}</b> ／ 已進場 ${S.total} 人</div>`;
     } else if (S.status === "revealed") {
       stage += `<p class="hq-text">${esc(item.text)}</p>` + barsHTML(item);
     } else {
-      stage += `<p class="done-h">✅ 隨堂測驗結束，正式課程開始！</p>` + summaryHTML(Q);
+      stage += `<p class="done-h">✅ 隨堂測驗結束，正式課程開始！</p>` + summaryHTML(curDetail());
     }
     const d = busy ? "disabled" : "";
     let main = "";
@@ -830,22 +1228,42 @@ function hostInit(){
     tick();
   }
   function barsHTML(item){
-    const c = S.counts || { t:0, f:0 }, total = Math.max(S.total, c.t + c.f), none = Math.max(0, total - c.t - c.f);
+    const c = S.counts || { t:0, f:0 }, total = Math.max(S.eligible == null ? S.total : S.eligible, c.t + c.f), none = Math.max(0, total - c.t - c.f);
     const pct = n => total ? Math.round(n / total * 100) : 0, pr = CFG.passRate == null ? 0.6 : CFG.passRate;
     const right = item.answer ? c.t : c.f, rate = total ? right / total : 0, bad = rate < pr;
     const row = (cls, label, n, isRight) => `<div class="brow ${cls}${isRight ? " right" : ""}"><span class="bl">${label}</span><span class="bt"><i style="width:${pct(n)}%"></i></span><span class="bv">${n} 人｜${pct(n)}%</span></div>`;
     return `<div class="bars">${row("t","⭕ 選是",c.t,item.answer)}${row("f","❌ 選否",c.f,!item.answer)}${row("x","⏰ 逾時未答",none,false)}</div>
-      <div class="acc${bad ? " bad" : ""}">答對率 ${Math.round(rate * 100)}%（答對 ${right} 人／已進場 ${total} 人）${bad ? "　⚠ 低於 " + Math.round(pr * 100) + "%，觀念需加強" : ""}</div>
+      <div class="acc${bad ? " bad" : ""}">答對率 ${Math.round(rate * 100)}%（答對 ${right} 人／應作答 ${total} 人）${bad ? "　⚠ 低於 " + Math.round(pr * 100) + "%，觀念需加強" : ""}</div>
       ${item.comment ? `<div class="comment">${esc(item.comment)}</div>` : ""}`;
   }
-  function summaryHTML(Q){
+  /* ---------- 成績計算（結束畫面與歷次梯次共用） ---------- */
+  let hist = null, histBusy = false, histRound = null;
+  function histKey(){ return hist && hist.detail ? hist.detail.round + ":" + JSON.stringify(hist.detail.questions.map(x => [x.t, x.f])) : ""; }
+  // 結束畫面要用目前梯次的資料：資料庫是新版時向伺服器取，舊版就用輪詢結果＋目前題庫
+  function curDetail(){
+    const want = JSON.stringify(S.summary || []);
+    if (!needUpdate()) {
+      if (hist && hist.detail && hist.detail.round === S.round && hist._sum === want) return hist.detail;
+      if (!histBusy) { histBusy = true; hostCall("history", S.round).then(r => { if (r.ok) { hist = r; hist._sum = want; } }).catch(() => {}).then(() => { histBusy = false; lastKey = ""; render(true); }); }
+    }
+    const Q = CFG.questions || [];
+    return { round: S.round, total: S.total, units: S.units, questions: Q.map((it, i) => { const r = (S.summary || []).find(x => x.q === i + 1) || { t:0, f:0 }; return { q: i + 1, text: it.text, answer: it.answer, eligible: S.total, t: r.t, f: r.f }; }) };
+  }
+  function scoreOf(D){
+    const rows = D.questions.map(x => { const n = Math.max(x.eligible || 0, x.t + x.f), right = x.answer ? x.t : x.f; return Object.assign({}, x, { n, right, none: Math.max(0, n - x.t - x.f), rate: n ? right / n : null }); });
+    const sumN = rows.reduce((a, x) => a + x.n, 0), sumR = rows.reduce((a, x) => a + x.right, 0);
+    return { rows, sumN, sumR, rate: sumN ? sumR / sumN : null };
+  }
+  const pct = r => r == null ? "—" : Math.round(r * 100) + "%";
+  function overallHTML(sc){
     const pr = CFG.passRate == null ? 0.6 : CFG.passRate;
-    const rows = Q.map((it, i) => {
-      const r = (S.summary || []).find(x => x.q === i + 1) || { t:0, f:0 };
-      const total = Math.max(S.total, r.t + r.f), right = it.answer ? r.t : r.f, rate = total ? right / total : 0;
-      return `<tr><td>第 ${i + 1} 題</td><td>${esc(it.text)}</td><td class="r">${it.answer ? "⭕ 是" : "❌ 否"}</td><td class="r${rate < pr ? " bad" : ""}">${Math.round(rate * 100)}%</td></tr>`;
-    }).join("");
-    return `<div class="panel"><table class="sum"><thead><tr><th style="width:5.5em">題號</th><th>題目</th><th style="width:5em">正解</th><th style="width:5em">答對率</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    if (!sc.sumN) return `<div class="acc overall">本梯次沒有人作答，無法計算答對率</div>`;
+    return `<div class="acc overall${sc.rate < pr ? " bad" : ""}">全場總平均答對率：${pct(sc.rate)}（總答對 ${sc.sumR} 人次／應作答 ${sc.sumN} 人次）</div>`;
+  }
+  function summaryHTML(D, full){
+    const pr = CFG.passRate == null ? 0.6 : CFG.passRate, sc = scoreOf(D);
+    const rows = sc.rows.map(x => `<tr><td>第 ${x.q} 題</td><td>${esc(x.text)}</td><td class="r">${x.answer ? "⭕ 是" : "❌ 否"}</td>${full ? `<td class="c">${x.t}</td><td class="c">${x.f}</td><td class="c">${x.none}</td>` : ""}<td class="r${x.rate != null && x.rate < pr ? " bad" : ""}">${pct(x.rate)}</td></tr>`).join("");
+    return overallHTML(sc) + `<div class="panel"><table class="sum"><thead><tr><th style="width:5.5em">題號</th><th>題目</th><th style="width:5em">正解</th>${full ? `<th style="width:3.5em">選是</th><th style="width:3.5em">選否</th><th style="width:3.5em">未答</th>` : ""}<th style="width:5em">答對率</th></tr></thead><tbody>${rows || `<tr><td colspan="${full ? 7 : 4}" class="empty">本梯次尚未開始任何一題</td></tr>`}</tbody></table></div>`;
   }
   function tick(){
     if (tab !== "ctrl" || !S || S.status !== "active") return;
@@ -869,13 +1287,15 @@ function hostInit(){
     document.getElementById("hBody").innerHTML = `<div class="hwrap one"><div class="stage">
       <div class="panel"><h3>題目編輯</h3><p>可直接修改題目、正解與教官短評，用「↑」「↓」調整順序。改完記得按下方「💾 儲存題庫」。</p>
         <p class="empty">短評只會在大螢幕揭曉時顯示，學員手機看不到；學員也拿不到正解。</p>
-        ${locked ? `<div class="warnbox">目前正在作答中，請等本題截止後再儲存。</div>` : ""}</div>
+        ${locked ? `<div class="warnbox">目前正在作答中，請等本題截止後再儲存。</div>` : ""}
+        ${needUpdate() ? `<div class="warnbox">資料庫尚未更新：「本題作答秒數」要執行更新用 SQL 後才會生效（目前一律使用預設秒數）。</div>` : ""}</div>
       ${Q.map((it, i) => `<div class="qcard"><div class="qh"><b>第 ${i + 1} 題</b><span class="row" style="margin:0">
           <button type="button" class="mini" data-mv="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""}>↑ 上移</button>
           <button type="button" class="mini" data-mv="${i}" data-dir="1" ${i === Q.length - 1 ? "disabled" : ""}>↓ 下移</button>
           <button type="button" class="mini del" data-del="${i}">🗑 刪除</button></span></div>
         <span class="lab">題目</span><textarea rows="3" data-f="text" data-i="${i}" placeholder="請輸入題目（是非題）">${esc(it.text)}</textarea>
         <span class="lab">正解</span><span class="tf"><button type="button" class="t${it.answer ? " on" : ""}" data-ansset="${i}" data-v="1">⭕ 是</button><button type="button" class="f${!it.answer ? " on" : ""}" data-ansset="${i}" data-v="0">❌ 否</button></span>
+        <span class="lab">本題作答秒數</span><span class="qsec"><input type="number" min="5" max="180" inputmode="numeric" data-f="seconds" data-i="${i}" value="${it.seconds || ""}" placeholder="預設 ${draft.seconds || 20}"><small>留空＝使用「⚙ 設定」的預設秒數（${draft.seconds || 20} 秒）；可填 5～180</small></span>
         <span class="lab">教官一句話短評（揭曉時顯示在大螢幕，可留空）</span><textarea rows="2" data-f="comment" data-i="${i}">${esc(it.comment || "")}</textarea>
       </div>`).join("")}
       <button type="button" class="cbtn" id="qAdd" style="align-self:flex-start">＋ 新增題目</button>
@@ -889,7 +1309,7 @@ function hostInit(){
     try {
       const r = await hostCall("save_config", null, newCfg);
       if (r.ok) { CFG = JSON.parse(JSON.stringify(newCfg)); lastKey = ""; if (m) { m.className = "msg ok"; m.textContent = "✅ 已儲存"; } toast("已儲存"); return true; }
-      const why = { busy:"作答中不能儲存，請等本題截止後再試。", bad_questions: r.at ? `第 ${r.at} 題的題目是空白的，請補上或刪除。` : "至少要有 1 題。", bad_seconds:"作答秒數請在 5～180 之間。", bad_units:"單位清單格式錯誤。" }[r.err] || r.err;
+      const why = { busy:"作答中不能儲存，請等本題截止後再試。", bad_questions: r.at ? `第 ${r.at} 題的題目是空白的，請補上或刪除。` : "至少要有 1 題。", bad_seconds:"作答秒數請在 5～180 之間。", bad_qseconds: r.at ? `第 ${r.at} 題的秒數請填 5～180，或留空。` : "題目秒數錯誤。", bad_units:"單位清單格式錯誤。" }[r.err] || r.err;
       if (m) { m.className = "msg err"; m.textContent = "❌ " + why; }
     } catch(e) { if (m && e.message !== "bad_pin") { m.className = "msg err"; m.textContent = "❌ " + connErr(e); } }
     return false;
@@ -899,9 +1319,10 @@ function hostInit(){
   function setView(){
     const c = cfg();
     document.getElementById("hBody").innerHTML = `<div class="hwrap one"><div class="stage">
+      <div class="panel hist"><h3>📈 歷次梯次成績</h3><div id="histBox">${needUpdate() ? `<p class="empty">資料庫更新後才能查看歷次梯次成績。</p>` : `<p class="empty">讀取中…</p>`}</div></div>
       <div class="panel"><h3>報到與作答設定</h3>
         <label class="fld"><span>報到快捷單位（一行一個）</span><textarea id="sUnits" rows="5">${esc((CFG.units || []).join("\n"))}</textarea><small>清單以外的單位，學員可以點「其他單位」自己輸入。</small></label>
-        <label class="fld"><span>每題作答秒數</span><input id="sSec" type="number" min="5" max="180" value="${CFG.seconds || 20}" style="max-width:160px"></label>
+        <label class="fld"><span>預設每題作答秒數（題目沒有單獨設定秒數時使用）</span><input id="sSec" type="number" min="5" max="180" value="${CFG.seconds || 20}" style="max-width:160px"></label>
         <label class="fld"><span>答對率警戒門檻（%）</span><input id="sPass" type="number" min="0" max="100" value="${Math.round((CFG.passRate == null ? 0.6 : CFG.passRate) * 100)}" style="max-width:160px"><small>答對率低於這個數字，大螢幕會亮紅框。</small></label>
         <div class="row"><button type="button" class="cbtn small go" id="sSave">💾 儲存設定</button><span class="msg" id="sMsg"></span></div></div>
       <div class="panel"><h3>更改教官密碼</h3>
@@ -912,18 +1333,63 @@ function hostInit(){
         <p>Supabase 網址：<b>${esc(c.url)}</b></p>
         <p>${c.embedded ? "✅ 這份檔案已內建連線資料，可以直接上傳網站給學員使用。" : "⚠ 這份檔案還沒內建連線資料（只存在這台電腦），學員手機會連不上。請下載設定好的檔案再上傳。"}</p>
         <div class="row"><button type="button" class="cbtn small go" data-a="download">⬇ 下載設定好的 quiz.html</button>
-          <button type="button" class="cbtn small" id="sCopySql">📋 複製 SQL（重建資料表用）</button>
+          <button type="button" class="cbtn small" data-a="copyupd">📋 複製更新用 SQL（不清除資料）</button>
+          <button type="button" class="cbtn small" id="sCopySql">📋 複製完整安裝 SQL（會清空資料）</button>
           ${c.embedded ? "" : `<button type="button" class="cbtn small ghost" id="sForget">清除這台電腦的連線資料</button>`}</div>
-        <p class="empty">注意：重新執行 SQL 會清空所有題目、報到與作答紀錄，並把教官密碼恢復成 8888。</p></div>
+        <p class="empty">「更新用 SQL」只更新函式，不會動到資料。「完整安裝 SQL」會清空所有題目、報到與作答紀錄，並把教官密碼恢復成 8888，只有第一次安裝才需要。</p></div>
     </div></div>`;
+    if (!needUpdate()) loadHist(null);
+  }
+  /* ---------- 歷次梯次成績 ---------- */
+  const fmtTime = ms => { if (!ms) return ""; const d = new Date(ms), z = n => String(n).padStart(2, "0"); return `${d.getFullYear()}/${z(d.getMonth() + 1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`; };
+  async function loadHist(round){
+    const box = document.getElementById("histBox"); if (!box) return;
+    try {
+      const r = await hostCall("history", round); if (!r.ok) return;
+      hist = r; histRound = r.detail.round;
+      const D = r.detail;
+      const opts = r.rounds.map(x => `<option value="${x.round}"${x.round === D.round ? " selected" : ""}>第 ${x.round} 梯次${x.round === r.current ? "（目前）" : ""}｜${fmtTime(x.first) || "尚未開始"}｜${x.n} 人</option>`).join("");
+      const units = D.units.length ? `<div class="chips">${D.units.map(x => `<span class="chip">${esc(x.u)}<b>${x.n}</b></span>`).join("")}</div>` : `<p class="empty">本梯次沒有人報到</p>`;
+      box.innerHTML = `<div class="row" style="margin-top:0"><select id="histSel">${opts}</select>
+          <button type="button" class="mini" data-a="histcsv">⬇ 匯出本梯次 CSV</button><button type="button" class="mini" data-a="histcsvall">⬇ 匯出全部梯次 CSV</button></div>
+        <p style="margin-top:12px">參加人數：<b>${D.total}</b> 人</p>${units}<div style="margin-top:12px">${summaryHTML(D, true)}</div>`;
+    } catch(e) { if (e.message !== "bad_pin") box.innerHTML = `<p class="msg err">❌ ${esc(connErr(e))}</p>`; }
+  }
+  app.addEventListener("change", e => { if (e.target.id === "histSel") loadHist(Number(e.target.value)); });
+  async function exportCsv(all){
+    if (!hist) return;
+    const q = s => `"${String(s == null ? "" : s).replace(/"/g, '""')}"`;
+    const lines = [["梯次", "日期時間", "參加人數", "題號", "題目", "正解", "應作答人數", "選是", "選否", "未答", "答對率"].map(q).join(",")];
+    const list = all ? hist.rounds.map(x => x.round).sort((a, b) => a - b) : [hist.detail.round];
+    try {
+      for (const rd of list) {
+        const r = rd === hist.detail.round ? hist : await hostCall("history", rd);
+        const D = r.detail, sc = scoreOf(D), info = hist.rounds.find(x => x.round === rd) || {};
+        sc.rows.forEach(x => lines.push([rd, fmtTime(info.first), D.total, x.q, x.text, x.answer ? "是" : "否", x.n, x.t, x.f, x.none, pct(x.rate)].map(q).join(",")));
+        lines.push([rd, fmtTime(info.first), D.total, "全場總平均", "", "", sc.sumN, "", "", "", sc.sumN ? `${pct(sc.rate)}（總答對 ${sc.sumR} 人次／應作答 ${sc.sumN} 人次）` : "—"].map(q).join(","));
+      }
+    } catch(e) { toast("匯出失敗：" + connErr(e)); return; }
+    const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = all ? "隨堂測驗_全部梯次成績.csv" : `隨堂測驗_第${hist.detail.round}梯次成績.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast("已匯出 CSV");
   }
 
   /* ---------- 事件 ---------- */
   app.addEventListener("click", async e => {
     const b = e.target.closest("button"); if (!b) return;
-    const sfxWasReady = SFX.ready(); SFX.unlock();
-    if (b.dataset.a === "sfx") { if (SFX.on && !sfxWasReady) { SFX.unlock(); setTimeout(() => { SFX.join(); lastKey = ""; render(true); }, 80); return; } SFX.toggle(); lastKey = ""; render(true); return; }
-    if (b.dataset.a === "vol") { SFX.cycleVol(); lastKey = ""; render(true); return; }
+    SFX.unlock();
+    const sa = b.dataset.a, rer = () => { lastKey = ""; render(true); };
+    if (sa === "unlock") { setTimeout(() => { SFX.join(); rer(); }, 80); return; }
+    if (sa === "mute") { SFX.toggleMute(); rer(); return; }
+    if (sa === "sfx") { SFX.toggle(); rer(); return; }
+    if (sa === "music") { SFX.toggleMusic(); rer(); return; }
+    if (sa === "vol") { SFX.cycleVol(); rer(); return; }
+    if (sa === "fs") { toggleFs(); return; }
+    if (sa === "copyupd") { copyText(document.getElementById("sqlUpdate").textContent.trim() + "\n", "已複製更新用 SQL，請到 Supabase 的 SQL Editor 貼上按 Run"); return; }
+    if (sa === "histcsv") { exportCsv(false); return; }
+    if (sa === "histcsvall") { exportCsv(true); return; }
     // 精靈
     if (b.id === "wCopy") { copyText(sqlText(), "已複製 SQL，請到 Supabase 的 SQL Editor 貼上執行"); if (wizStep < 3) { wizStep = 3; } return; }
     if (b.id === "wTest") { wizardTest(); return; }
@@ -956,7 +1422,9 @@ function hostInit(){
     if (b.id === "qUndo") { draft = JSON.parse(JSON.stringify(CFG)); dirty = false; editView(); return; }
     if (b.id === "qSave") {
       const out = JSON.parse(JSON.stringify(draft));
-      out.questions = out.questions.map(q => ({ text: q.text.trim(), answer: !!q.answer, comment: (q.comment || "").trim() }));
+      const badSec = out.questions.findIndex(q => q.seconds != null && q.seconds !== "" && !(Number(q.seconds) >= 5 && Number(q.seconds) <= 180));
+      if (badSec >= 0) { const m = document.getElementById("qMsg"); m.className = "msg err"; m.textContent = `❌ 第 ${badSec + 1} 題的秒數請填 5～180，或留空使用預設秒數。`; return; }
+      out.questions = out.questions.map(q => { const o = { text: q.text.trim(), answer: !!q.answer, comment: (q.comment || "").trim() }; if (q.seconds != null && q.seconds !== "") o.seconds = Math.round(Number(q.seconds)); return o; });
       if (await saveAll(out, "qMsg")) { draft = JSON.parse(JSON.stringify(CFG)); dirty = false; editView(); const m = document.getElementById("qMsg"); m.className = "msg ok"; m.textContent = "✅ 已儲存，學員端立即生效"; }
       return;
     }
@@ -984,9 +1452,31 @@ function hostInit(){
   });
   app.addEventListener("input", e => {
     const t = e.target;
-    if (t.dataset && t.dataset.f && draft) { draft.questions[+t.dataset.i][t.dataset.f] = t.value; markDirty(); }
+    if (t.dataset && t.dataset.f && draft) { draft.questions[+t.dataset.i][t.dataset.f] = t.dataset.f === "seconds" ? (t.value.trim() === "" ? null : Number(t.value)) : t.value; markDirty(); }
   });
   app.addEventListener("keydown", e => { if (e.target.id === "pin" && e.key === "Enter") tryLogin(); });
+  function toggleFs(){
+    try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch(e) { toast("此瀏覽器不支援全螢幕，請按 F11"); }
+  }
+  document.addEventListener("fullscreenchange", () => { const b = document.querySelector(".htab.fs"); if (b) b.textContent = document.fullscreenElement ? "⛶ 離開全螢幕" : "⛶ 全螢幕"; });
+  // 簡報筆的「下一頁／上一頁」就是鍵盤的 → PgDn／← PgUp
+  window.addEventListener("keydown", e => {
+    const tg = e.target, typing = tg && (tg.tagName === "INPUT" || tg.tagName === "TEXTAREA" || tg.tagName === "SELECT" || tg.isContentEditable);
+    if (!pin || tab !== "ctrl" || typing || e.ctrlKey || e.metaKey || e.altKey || !S) return;
+    SFX.unlock();
+    const k = e.key, next = ["ArrowRight", "PageDown", " ", "Enter"].includes(k), stop = ["ArrowLeft", "PageUp", "Escape"].includes(k);
+    if (k === "m" || k === "M") { e.preventDefault(); SFX.toggleMute(); lastKey = ""; render(true); toast(SFX.muted ? "🔇 已全部靜音" : "🔊 已恢復聲音"); return; }
+    if (k === "f" || k === "F") { e.preventDefault(); toggleFs(); return; }
+    if (!next && !stop) return;
+    e.preventDefault();
+    if (busy) return;
+    const NQ = (CFG && CFG.questions || []).length;
+    if (next) {
+      if (S.status === "waiting" && NQ) act("start", 1);
+      else if (S.status === "revealed") { if (S.q < NQ) act("start", S.q + 1); else act("finish"); }
+      else if (S.status === "active") toast("作答中：要提早截止請按 ← 或 Esc");
+    } else if (stop && S.status === "active") act("reveal");
+  });
   window.addEventListener("beforeunload", e => { if (tab === "edit" && dirty) { e.preventDefault(); e.returnValue = ""; } });
 
   let running = false;
@@ -1009,4 +1499,6 @@ function hostInit(){
 }
 
 if (IS_HOST) hostInit(); else studentInit();
-</script></body></html>
+</script>
+</body>
+</html>
