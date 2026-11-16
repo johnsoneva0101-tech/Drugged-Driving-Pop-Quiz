@@ -944,7 +944,7 @@ function studentInit(){
    =================================================================== */
 function hostInit(){
   document.body.classList.add("host");
-  document.getElementById("ttl").textContent = "隨堂測驗・教官控場看板";
+  document.getElementById("ttl").textContent = "隨堂測驗・答題看板";
   let S = null, CFG = null, pin = SS.get("dq_pin") || "", busy = false, ok = true, lastKey = "";
   let tab = "ctrl", draft = null, dirty = false, wizStep = hasCfg() ? 4 : 1;
 
@@ -1281,7 +1281,7 @@ function hostInit(){
     lastKey = key;
     const Q = CFG.questions || [], NQ = Q.length;
     const unitsHtml = S.units.length ? `<div class="chips">${S.units.map(x => `<span class="chip">${esc(x.u)}<b>${x.n}</b></span>`).join("")}</div>` : `<p class="empty">尚無人報到</p>`;
-    const side = `<div class="panel"><h3>進場報到監控</h3><div class="total">${S.total}<small>人已進場</small></div>${unitsHtml}</div>`;
+    const side = `<div class="panel"><h3>進場報到人數</h3><div class="total">${S.total}<small>人已進場</small></div>${unitsHtml}</div>`;
     const stName = { waiting:"報到待機中", active:`第 ${S.q} 題作答中`, revealed:`第 ${S.q} 題已揭曉`, finished:"測驗結束" }[S.status];
     const item = Q[S.q - 1] || { text: S.qtext || "", answer:true, comment:"" };
     let stage = `<div class="hq-meta"><span class="status ${S.status}">${stName}</span>${S.status === "active" || S.status === "revealed" ? `<span class="hq-n">第 ${S.q} 題／共 ${NQ} 題・本題 ${S.seconds || qSec(S.q)} 秒</span>` : `<span class="hq-n">題庫共 ${NQ} 題・${Q.some(x => x.seconds) ? "預設" : ""}每題 ${CFG.seconds || 20} 秒</span>`}</div>`;
