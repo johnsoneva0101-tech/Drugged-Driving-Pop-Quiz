@@ -863,7 +863,7 @@ function studentInit(){
     }
   }
   function footHTML(canChange){
-    return `<div class="foot">${canChange ? `<button type="button" data-act="change">更換單位</button>・` : ""}<button type="button" data-act="host">教官控場</button></div>`;
+    return canChange ? `<div class="foot"><button type="button" data-act="change">更換單位</button></div>` : "";
   }
   function canJoin(v){
     if (joining) return false;
