@@ -1,0 +1,3 @@
+qa_output/
+__pycache__/
+*.pyc
